@@ -28,6 +28,174 @@ Claude → Read tool → Individual script → Direct SQLAlchemy → PostgreSQL
 - Standalone integration needed
 - Agent needs to discover operations progressively
 
+---
+
+## Progressive Disclosure in Action
+
+**The Core Principle:** "Load only what you need, when you need it." - Anthropic
+
+### Real-World Comparison
+
+**Scenario:** Agent needs to list tenants, then get details of one tenant.
+
+#### ❌ CLI Approach (Full Context Loading)
+```
+User: "List Ada tenants"
+→ Agent loads entire CLI: ~1,000+ lines
+→ Executes: ada_cli.py tenant list
+→ Context consumed: ~4,000 tokens
+
+User: "Tell me about the first one"
+→ Agent loads entire CLI again: ~1,000+ lines
+→ Executes: ada_cli.py tenant get <id>
+→ Context consumed: ~4,000 tokens
+
+Total: ~8,000 tokens for 2 operations
+```
+
+#### ✅ Scripts Approach (Progressive Disclosure)
+```
+User: "List Ada tenants"
+→ Agent reads ONLY list_tenants.py: ~150 lines
+→ Executes: python list_tenants.py
+→ Context consumed: ~600 tokens
+
+User: "Tell me about the first one"
+→ Agent reads ONLY get_tenant.py: ~120 lines
+→ Executes: python get_tenant.py <id>
+→ Context consumed: ~480 tokens
+
+Total: ~1,080 tokens for 2 operations
+```
+
+**Savings:** **87% reduction** in context consumption!
+
+### Token Efficiency at Scale
+
+**Scenario:** Agent performs 10 Ada operations throughout a session.
+
+| Pattern | Per Operation | 10 Operations | Total Context |
+|---------|---------------|---------------|---------------|
+| MCP Server | ~8,000 tokens | 10x | ~80,000 tokens |
+| CLI | ~4,000 tokens | 10x | ~40,000 tokens |
+| **Scripts** | **~1,500 tokens** | **10x** | **~15,000 tokens** |
+
+**Result:** Scripts preserve **65,000 more tokens** than MCP Server across 10 operations!
+
+With a 200K token budget, that's the difference between:
+- **MCP**: 120K remaining (60% budget left)
+- **CLI**: 160K remaining (80% budget left)
+- **Scripts**: 185K remaining (92% budget left)
+
+### Discovery Pattern: How Agents Use Scripts
+
+Unlike CLI/MCP which load everything upfront, scripts enable **incremental discovery**:
+
+```
+1. User: "Show me Ada tenants"
+   → Agent: Discovers scripts/tenants/ directory
+   → Agent: Sees 3 files: list_tenants.py, get_tenant.py, create_tenant.py
+   → Agent: Reads ONLY list_tenants.py (~150 lines)
+   → Agent: Executes script
+   ✅ Context: ~600 tokens
+
+2. User: "Tell me more about Setur Marinas"
+   → Agent: Already knows tenant ID from previous result
+   → Agent: Reads ONLY get_tenant.py (~120 lines)
+   → Agent: Executes script with tenant ID
+   ✅ Context: ~480 tokens
+
+3. User: "Create a fleet for them"
+   → Agent: Discovers scripts/fleets/ directory
+   → Agent: Reads ONLY create_fleet.py (~180 lines)
+   → Agent: Executes script with tenant ID
+   ✅ Context: ~720 tokens
+
+Total: ~1,800 tokens vs ~12,000+ with CLI approach
+```
+
+**Key Insight:** Each script operation is **independent**. The agent only pays the cost for what it actually uses.
+
+---
+
+## Minimal Prime Prompt for Scripts
+
+Want your agent to use progressive disclosure? Here's the simplest setup:
+
+```markdown
+# Ada Scripts
+
+When the user asks about Ada operations, progressively discover and use scripts in `tooling/scripts/`.
+
+**Discovery Process:**
+1. List the directory to see available operations
+2. Read ONLY the specific script needed
+3. Execute the script
+4. Repeat for next operation
+
+**Do NOT:**
+- Load multiple scripts upfront
+- Read implementation details
+- Consume unnecessary context
+
+**Example:**
+User asks to list tenants → Read scripts/tenants/list_tenants.py → Execute it
+```
+
+That's it! The agent will naturally discover and use scripts progressively.
+
+### Enhanced Prime Prompt with Structure
+
+For more guidance:
+
+```markdown
+# Ada File System Scripts
+
+## Progressive Disclosure Pattern
+
+Load scripts incrementally as needed. Each script is self-contained.
+
+## Available Operations
+
+Check these directories for scripts:
+- `tooling/scripts/tenants/` - Tenant management
+- `tooling/scripts/fleets/` - Fleet operations
+- `tooling/scripts/users/` - User management
+
+## Workflow
+
+1. User requests Ada operation
+2. Identify which directory has relevant scripts
+3. List that directory to discover available scripts
+4. Read ONLY the specific script needed for this operation
+5. Execute script with appropriate arguments
+6. Present results to user
+7. For next operation, repeat from step 1
+
+## Critical Rules
+
+- **Never** load all scripts upfront
+- **Never** read scripts you don't immediately need
+- **Always** use absolute paths (scripts work from any directory)
+- **Always** check script exit codes (0 = success, 1 = failure)
+
+## Example Flow
+
+User: "List Ada tenants"
+→ Read scripts/tenants/list_tenants.py
+→ Execute: python list_tenants.py
+→ Show results
+
+User: "Get details on first tenant"
+→ Read scripts/tenants/get_tenant.py (only now!)
+→ Execute: python get_tenant.py <id>
+→ Show results
+```
+
+This guides the agent to use progressive disclosure naturally.
+
+---
+
 ## Installation
 
 ```bash

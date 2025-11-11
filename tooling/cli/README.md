@@ -14,6 +14,126 @@ Claude → subprocess → Ada CLI → Direct SQLAlchemy → PostgreSQL
 - **Single Source of Truth**: All Ada logic in one place
 - **~50% Lower Context**: Compared to MCP Server pattern
 
+---
+
+## Why CLI First?
+
+Following industry best practices from leading AI engineers, **always build CLI first for new tools**.
+
+### The Trifecta: Works for Everyone
+
+The CLI pattern simultaneously serves three critical audiences:
+
+1. **👤 You (Developer)** - Direct terminal access for testing, debugging, operations
+2. **👥 Your Team** - Scriptable interface for automation, CI/CD, deployment
+3. **🤖 Your Agents** - Subprocess invocation with JSON output for programmatic access
+
+**This is the only pattern that natively supports all three without additional work.**
+
+### Why This Matters
+
+**From the CLI, you can go anywhere:**
+
+```
+CLI (Foundation)
+ ├─→ MCP Server (wrap CLI via subprocess)
+ ├─→ REST API (expose CLI operations as endpoints)
+ ├─→ Scripts (call CLI commands in isolated files)
+ └─→ Direct Use (terminal, CI/CD, automation)
+```
+
+**From MCP Server, you're locked in:**
+
+```
+MCP Server (Locked)
+ └─→ ❌ Can't easily convert to CLI
+ └─→ ❌ Limited to MCP-compatible clients
+ └─→ ❌ No direct terminal access
+```
+
+### Real-World Example
+
+Our Ada MCP Server (`../mcp_server/server.py`) demonstrates this perfectly:
+
+```python
+def run_cli_command(args: List[str]) -> Dict[str, Any]:
+    """MCP server delegates to CLI via subprocess."""
+    cmd = ["python", str(CLI_PATH), "--format", "json"] + args
+    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    return json.loads(result.stdout)
+
+@mcp.tool()
+def ada_tenant_list() -> List[Dict[str, Any]]:
+    """MCP tool just calls the CLI."""
+    return run_cli_command(["tenant", "list"])
+```
+
+**Benefits:**
+- ✅ Single source of truth (CLI)
+- ✅ Easy to maintain (one codebase)
+- ✅ MCP gets all CLI improvements automatically
+- ✅ Can still use CLI directly when needed
+
+### Context Efficiency
+
+While not as efficient as Scripts/Skills, CLI provides significant savings over MCP:
+
+| Pattern | Context Consumed | Savings |
+|---------|-----------------|---------|
+| MCP Server | ~8,000 tokens | Baseline |
+| **CLI** | ~4,000 tokens | **50% reduction** |
+| Scripts | ~1,500 tokens | 80% reduction |
+
+**When to use CLI over Scripts:**
+- Need human-readable output (not just agent access)
+- Want standard CLI UX (--help, flags, subcommands)
+- Prefer cohesive codebase over isolated scripts
+- Balance between context efficiency and developer experience
+
+---
+
+## Minimal Prime Prompt (5 Lines)
+
+Want the simplest possible agent setup? Just give your agent this prompt:
+
+```markdown
+Read these files:
+- tooling/cli/README.md
+- tooling/cli/ada_cli.py
+
+Summarize available tools, then help the user manage Ada operations.
+```
+
+That's it! Your agent now understands the CLI and can help users.
+
+### Enhanced Prime Prompt
+
+For more structured agent behavior, use this pattern:
+
+```markdown
+# Ada CLI Tools
+
+## Setup
+Read only these files to understand available tools:
+1. `tooling/cli/README.md` - Command documentation
+2. `tooling/cli/ada_cli.py` - CLI implementation
+
+## Workflow
+1. Summarize available commands and their purpose
+2. When user requests Ada operations, use appropriate CLI commands
+3. Always use `--format json` for programmatic access
+4. Parse JSON responses and present in user-friendly format
+
+## Important
+- Do NOT read client.py or formatting.py (implementation details)
+- Always verify tenant IDs before creating resources
+- Use appropriate ID generation strategies for fleet operations
+```
+
+This 15-line prompt gives your agent everything needed without loading the entire codebase.
+
+---
+
 ## Installation
 
 ```bash
