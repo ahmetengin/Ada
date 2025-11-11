@@ -4,6 +4,24 @@
 
 ## 🚀 Key Features
 
+### SEAL (Self-Evolving Agent Loop)
+
+Ada implements a comprehensive **SEAL system** for autonomous agent learning and evolution:
+
+- **Experience Tracking** - Automatically records agent actions, decisions, and outcomes
+- **Reflection System** - Analyzes experiences to extract insights and patterns
+- **Memory Formation** - Creates durable knowledge from learned patterns
+- **Self-Evolution** - Continuous improvement through iterative learning cycles
+- **Performance Tracking** - Monitors agent effectiveness and success rates
+- **Adaptive Learning** - Adjusts behavior based on feedback and outcomes
+
+The SEAL loop enables agents to:
+1. **Learn from experience** - Every action is recorded and analyzed
+2. **Identify patterns** - Successful strategies and error patterns are detected
+3. **Build knowledge** - Insights are stored as reusable memories
+4. **Improve over time** - Performance increases with each learning cycle
+5. **Adapt to context** - Memories are retrieved based on relevance
+
 ### Tenant-Scoped Unique ID System
 
 Ada implements a robust **tenant-scoped unique identifier system** for cloning resources/entities within each tenant:
@@ -113,6 +131,55 @@ See [observability/README.md](observability/README.md) for detailed documentatio
 
 ## 💡 Usage Examples
 
+### Using SEAL (Self-Evolving Agent Loop)
+
+```python
+from ada.services import SEALManager
+from ada.database import get_db
+
+async with get_db() as session:
+    manager = SEALManager(session)
+
+    # Create a SEAL agent
+    agent = await manager.create_agent(
+        tenant_id=tenant_id,
+        name="Maritime Assistant",
+        agent_type="specialist",
+        capabilities=["route_planning", "weather_analysis"],
+        seal_enabled=True,
+        reflection_frequency=5  # Reflect every 5 experiences
+    )
+
+    # Record an experience
+    experience = await manager.record_experience(
+        agent_id=agent.id,
+        tenant_id=tenant_id,
+        experience_type="task_execution",
+        task_name="route_planning",
+        action_taken="Calculated optimal route considering weather",
+        success=True,
+        performance_score=0.9,
+        reasoning="Analyzed wind patterns to minimize travel time"
+    )
+
+    # Trigger reflection to create memories
+    memories = await manager.trigger_reflection(agent.id)
+
+    # Run evolution cycle
+    results = await manager.evolve_agent(agent.id)
+    print(f"Success rate: {results['success_rate']:.2%}")
+
+    # Retrieve relevant memories for context
+    relevant_memories = await manager.retrieve_relevant_memories(
+        agent_id=agent.id,
+        context="route planning in bad weather",
+        limit=5
+    )
+
+    # Get comprehensive insights
+    insights = await manager.get_agent_insights(agent.id)
+```
+
 ### Creating Tenants and Fleets
 
 ```python
@@ -179,13 +246,26 @@ async with get_db() as session:
     )
 ```
 
-### Running the Example
+### Running the Examples
 
 ```bash
+# Run SEAL example
+uv run python examples/seal_example.py
+
+# Run cloning example
 uv run python examples/cloning_example.py
 ```
 
-This demonstrates:
+**SEAL Example demonstrates:**
+- Creating SEAL agents with learning capabilities
+- Recording experiences (successes and errors)
+- Automatic and manual reflection triggering
+- Memory creation from experience patterns
+- Evolution cycles for continuous improvement
+- Performance tracking and insights
+- Memory retrieval and feedback
+
+**Cloning Example demonstrates:**
 - Creating tenants, fleets, and users
 - Cloning individual entities
 - Cloning with relationships (fleet → users)
@@ -219,20 +299,27 @@ Ada/
 │   │   ├── base.py              # Base model with tenant scope
 │   │   ├── tenant.py            # Tenant model
 │   │   ├── fleet.py             # Fleet model
-│   │   └── user.py              # User model
+│   │   ├── user.py              # User model
+│   │   ├── seal_agent.py        # SEAL agent model
+│   │   ├── seal_experience.py   # SEAL experience model
+│   │   └── seal_memory.py       # SEAL memory model
 │   ├── database/                 # Database configuration
 │   │   ├── base.py              # SQLAlchemy base
 │   │   ├── session.py           # Session management
 │   │   └── clients.py           # Redis, Qdrant, Neo4j, FAISS
+│   ├── services/                 # Business logic
+│   │   └── seal_manager.py      # SEAL orchestration
 │   ├── utils/                    # Utilities
 │   │   ├── tenant_id_generator.py  # Unique ID generation
 │   │   └── cloning.py           # Cloning utilities
-│   ├── services/                 # Business logic (TODO)
-│   ├── schemas/                  # Pydantic schemas (TODO)
-│   └── api/                      # API routes (TODO)
+│   ├── api/                      # API routes
+│   │   └── seal.py              # SEAL API endpoints
+│   └── schemas/                  # Pydantic schemas (TODO)
 ├── examples/                     # Usage examples
+│   ├── seal_example.py          # SEAL demonstration
 │   └── cloning_example.py       # Cloning demonstration
 ├── tests/                        # Test suite
+│   ├── test_seal.py             # SEAL tests
 │   └── test_cloning.py          # Cloning tests
 ├── .env.example                  # Environment template
 ├── .gitignore
@@ -241,6 +328,55 @@ Ada/
 ```
 
 ## 🔑 Key Concepts
+
+### SEAL Loop Architecture
+
+The SEAL (Self-Evolving Agent Loop) follows a continuous learning cycle:
+
+```
+┌─────────────────────────────────────────────────┐
+│                                                 │
+│  1. EXPERIENCE COLLECTION                       │
+│     └─ Record actions, decisions, outcomes      │
+│                                                 │
+│  2. REFLECTION                                  │
+│     └─ Analyze patterns in experiences          │
+│                                                 │
+│  3. MEMORY FORMATION                            │
+│     └─ Create knowledge from insights           │
+│                                                 │
+│  4. APPLICATION                                 │
+│     └─ Use memories to improve performance      │
+│                                                 │
+│  5. EVOLUTION                                   │
+│     └─ Adapt and optimize continuously          │
+│                                                 │
+└────────────────┬────────────────────────────────┘
+                 │
+                 └─► Repeat cycle ◄─
+```
+
+**SEAL Components:**
+
+1. **SEALAgent**: The learning agent with SEAL capabilities
+   - Tracks performance metrics and learning statistics
+   - Configurable learning rate and reflection frequency
+   - Supports multiple agent types and specializations
+
+2. **SEALExperience**: Records of agent activities
+   - Task executions, decisions, errors, reflections
+   - Context, reasoning, outcomes, and feedback
+   - Performance scores and importance ratings
+
+3. **SEALMemory**: Distilled knowledge from experiences
+   - Skills, patterns, strategies, heuristics
+   - Confidence scores and effectiveness tracking
+   - Version control and evolution tracking
+
+4. **SEALManager**: Orchestrates the learning loop
+   - Triggers reflection based on experience count
+   - Analyzes patterns to create memories
+   - Manages evolution cycles and feedback
 
 ### Tenant-Scoped Unique IDs
 
@@ -307,17 +443,29 @@ See [observability/README.md](observability/README.md) for full documentation.
 
 ## 🚧 Roadmap
 
-- [x] Multi-agent observability system
-- [ ] API endpoints for CRUD operations
+### Completed ✅
+- [x] SEAL (Self-Evolving Agent Loop) implementation
+- [x] SEAL API endpoints
+- [x] Experience tracking and memory formation
+- [x] Reflection and evolution cycles
+- [x] Multi-tenant architecture
+- [x] Tenant-scoped cloning system
+
+### In Progress 🚧
+- [ ] Enhanced SEAL with vector embeddings (Qdrant/FAISS)
+- [ ] LLM integration for intelligent reflection
+- [ ] API endpoints for tenants, fleets, users
 - [ ] Authentication & authorization
-- [ ] Agent integration (SEAL, skills)
-- [ ] RAG implementation
-- [ ] Vector search with Qdrant/FAISS
-- [ ] Graph queries with Neo4j
-- [ ] Real-time updates with WebSockets
+
+### Planned 📋
+- [ ] RAG implementation for agent knowledge
+- [ ] Graph queries with Neo4j for relationships
+- [ ] Real-time agent monitoring with WebSockets
+- [ ] Advanced skill learning and transfer
+- [ ] Multi-agent collaboration
 - [ ] Docker Compose setup
 - [ ] Alembic migrations
-- [ ] API documentation (OpenAPI/Swagger)
+- [ ] Comprehensive API documentation
 - [ ] Production deployment guide
 
 ## 📝 License

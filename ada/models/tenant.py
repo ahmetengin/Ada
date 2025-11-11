@@ -12,6 +12,9 @@ from ada.database.base import Base
 if TYPE_CHECKING:
     from ada.models.fleet import Fleet
     from ada.models.user import User
+    from ada.models.seal_agent import SEALAgent
+    from ada.models.seal_experience import SEALExperience
+    from ada.models.seal_memory import SEALMemory
 
 
 class Tenant(Base):
@@ -88,6 +91,24 @@ class Tenant(Base):
 
     users: Mapped[list["User"]] = relationship(
         "User",
+        back_populates="tenant",
+        cascade="all, delete-orphan",
+    )
+
+    seal_agents: Mapped[list["SEALAgent"]] = relationship(
+        "SEALAgent",
+        back_populates="tenant",
+        cascade="all, delete-orphan",
+    )
+
+    seal_experiences: Mapped[list["SEALExperience"]] = relationship(
+        "SEALExperience",
+        back_populates="tenant",
+        cascade="all, delete-orphan",
+    )
+
+    seal_memories: Mapped[list["SEALMemory"]] = relationship(
+        "SEALMemory",
         back_populates="tenant",
         cascade="all, delete-orphan",
     )
