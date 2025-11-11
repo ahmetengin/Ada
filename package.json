@@ -9,6 +9,7 @@
     "start": "node dist/index.js",
     "dev": "tsx watch examples/ecosystem-demo.ts",
     "demo:legal": "tsx examples/legal-consultation-demo.ts",
+    "demo:mcp": "tsx examples/mcp-optimization-demo.ts",
     "test": "jest"
   },
   "keywords": [
