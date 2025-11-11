@@ -3,7 +3,7 @@
 import uuid
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import ForeignKey, Index, String, Uuid
+from sqlalchemy import ForeignKey, Index, JSON, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ada.models.base import TenantScopedModel
@@ -76,7 +76,7 @@ class User(TenantScopedModel):
 
     # Preferences and metadata
     preferences: Mapped[dict[str, Any] | None] = mapped_column(
-        type_=None,  # Will be JSON in PostgreSQL
+        JSON,
         nullable=True,
         comment="User preferences and settings",
     )
