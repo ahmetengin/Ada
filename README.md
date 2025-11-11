@@ -1,102 +1,128 @@
-# Ada CAN Parser
+# Ada Ecosystem 🌊
 
-A Python library for parsing and working with CAN bus messages using `python-can`.
+**Kendi kendini çoğaltan, AI destekli node ekosistemi** - Denizcilik, marina, seyahat ve kongre yönetimi için.
 
-## Features
+## 🎯 Genel Bakış
 
-- Parse CAN bus messages from various interfaces
-- Send and receive CAN messages
-- Support for standard and extended CAN IDs
-- Context manager support for easy connection management
-- Built with modern Python using `uv` package manager
+Ada Ekosistemi, birbirleriyle iletişim kurabilen, kendi hafızaları ve yetenekleri olan, kendilerini klonlayabilen yapay zeka node'larından oluşan bir sistemdir. Her node tipi kendi alanında uzmanlaşmıştır ve tıpkı insanlar gibi birbirleriyle etkileşime girebilir.
 
-## Requirements
+## 🏗️ Mimari
 
-- Python 3.11+
-- uv package manager
+### Temel Bileşenler
 
-## Installation
+```
+ada-ecosystem/
+├── core/                      # Temel sistem bileşenleri
+│   ├── BaseNode.ts           # Tüm node'lar için temel şablon
+│   ├── NodeMemory.ts         # Hafıza yönetim sistemi
+│   ├── NodeCommunication.ts  # Node'lar arası iletişim
+│   ├── NodeReplication.ts    # Kendini çoğaltma sistemi
+│   └── types.ts              # Ortak tip tanımlamaları
+│
+├── nodes/                     # Node türleri
+│   ├── ada.sea/              # Yat yönetimi node'u
+│   ├── ada.marina/           # Marina yönetimi node'u
+│   ├── ada.travel/           # Seyahat acentesi node'u
+│   └── ada.congress/         # Kongre yönetimi node'u
+│
+└── examples/                  # Örnek kullanımlar
+    └── ecosystem-demo.ts     # Tam ekosistem demosu
+```
 
-This project uses `uv` for dependency management:
+## 🚢 Node Türleri
+
+### 1. **ada.sea** - Yat Yönetimi Node'u
+
+12 metre üzeri yatları yapay zeka ile yönetir.
+
+**Yetenekler:**
+- 🛰️ NMEA2000 veri entegrasyonu (CAN > PRG > JSON)
+- 🌤️ Hava durumu takibi ve rota optimizasyonu
+- 👥 Mürettebat yönetimi (lisans, sertifika, belge kontrolü)
+- 🛂 Yolcu yönetimi (pasaport, vize, sağlık kontrolleri)
+- 🍽️ AI destekli menü planlama ve provizyon
+- 🗺️ Seyir planlaması ve güvenlik değerlendirmesi
+- ⚓ Marina ile iletişim ve rezervasyon
+
+### 2. **ada.marina** - Marina Yönetimi Node'u
+
+Modern marina operasyonlarını AI ile yönetir. West Istanbul Marina (WIM) referans alınarak tasarlanmıştır - 155,000 m².
+
+**Yetenekler:**
+- 🚤 Berth (rıhtım) yönetimi
+- 📅 Rezervasyon sistemi
+- 📄 Sözleşme yönetimi (günlük, haftalık, aylık, yıllık)
+- 🧾 E-Fatura entegrasyonu (Türk vergi sistemi)
+- ⚡ Hizmet yönetimi (elektrik, su, yakıt, bakım)
+- 💰 Gelir yönetimi ve raporlama
+
+### 3. **ada.travel** - Seyahat Acentesi Node'u
+
+Tüm seyahat acenteliği operasyonlarını yönetir.
+
+**Yetenekler:**
+- ✈️ Uçak rezervasyonu
+- 🏨 Otel rezervasyonu
+- 🚌 Tur yönetimi (günlük turlar, paket turlar)
+- 🚗 Kara ulaşımı koordinasyonu
+- 📦 Paket tur oluşturma
+
+### 4. **ada.congress** - Kongre Yönetimi Node'u
+
+Katılımcıları evlerinden alıp, etkinlik boyunca yöneterek, tekrar evlerine götürene kadar tüm süreci yönetir.
+
+**Yetenekler:**
+- 📧 Davetiye yönetimi
+- 📝 Kayıt sistemi
+- 💳 Ödeme yönetimi
+- 📱 Apple PassKit QR kod entegrasyonu
+- 🗓️ Tam itinerari (yolculuk planı) yönetimi
+- ✈️ Lojistik koordinasyon
+
+## 🧬 Kendini Çoğaltma (Self-Replication)
+
+Her node kendini klonlayabilir:
+
+```typescript
+const clone = await yacht.clone('Azure Dream Clone 1', {
+  inheritMemory: true,
+  inheritConnections: true,
+  purpose: 'Handle increased load',
+});
+```
+
+## 💬 Node'lar Arası İletişim
+
+Node'lar tıpkı insanlar gibi birbirleriyle iletişim kurar:
+
+```typescript
+// Soru-cevap
+const response = await yachtNode.requestFromNode(
+  marinaNodeId,
+  'check-availability',
+  {}
+);
+```
+
+## 🚀 Kurulum ve Çalıştırma
 
 ```bash
-# Install dependencies
-uv sync
+# Bağımlılıkları yükle
+npm install
 
-# Activate virtual environment
-source .venv/bin/activate  # On Linux/macOS
-# or
-.venv\Scripts\activate  # On Windows
+# Demo'yu çalıştır
+npm run dev
 ```
 
-## Usage
+## 🌟 Özellikler
 
-### Basic Example
+✨ **Kendini Çoğaltma** - Node'lar ihtiyaç halinde kendilerini klonlar
+✨ **İnsan Gibi İletişim** - Node'lar arası doğal iletişim
+✨ **Hafıza Sistemi** - Her node öğrenir ve hatırlar
+✨ **Domain Uzmanlığı** - Her node kendi alanında uzman
+✨ **Tam Otomasyon** - Minimal insan müdahalesi
+✨ **Gerçek Zamanlı** - Anlık veri işleme ve karar verme
 
-```python
-from src.ada_parser import CANParser
+---
 
-# Create parser instance
-parser = CANParser(interface="socketcan", channel="vcan0", bitrate=500000)
-
-# Use context manager for automatic connection handling
-with parser:
-    # Send a message
-    parser.send_message(
-        arbitration_id=0x123,
-        data=b'\xDE\xAD\xBE\xEF'
-    )
-
-    # Read messages
-    messages = parser.read_messages(timeout=5.0, count=10)
-    for msg in messages:
-        print(msg)
-```
-
-### Running the Example
-
-```bash
-# Run the example script
-uv run python main.py
-```
-
-## Setting up Virtual CAN (Linux)
-
-For testing without physical CAN hardware:
-
-```bash
-# Load the vcan kernel module
-sudo modprobe vcan
-
-# Create a virtual CAN interface
-sudo ip link add dev vcan0 type vcan
-sudo ip link set up vcan0
-
-# Send test messages
-cansend vcan0 123#DEADBEEF
-```
-
-## Development
-
-### Adding Dependencies
-
-```bash
-uv add <package-name>
-```
-
-### Project Structure
-
-```
-Ada/
-├── src/
-│   └── ada_parser/
-│       ├── __init__.py
-│       └── parser.py
-├── main.py
-├── pyproject.toml
-└── README.md
-```
-
-## License
-
-This project is open source.
+**Ada Ecosystem** - Geleceğin yapay zeka destekli iş süreçleri platformu 🚀
