@@ -3,7 +3,7 @@
  * Each node type has its own domain-specific capabilities
  */
 
-export type NodeType = 'ada.sea' | 'ada.marina' | 'ada.travel' | 'ada.congress';
+export type NodeType = 'ada.sea' | 'ada.marina' | 'ada.travel' | 'ada.congress' | 'ada.hukuk';
 
 export interface NodeIdentity {
   id: string;
@@ -320,4 +320,105 @@ export interface NodeState {
   lastActivity: Date;
   connectedNodes: string[];
   pendingMessages: number;
+}
+
+// Ada.Hukuk specific types
+export interface LegalInstitution {
+  code: string;
+  name: string;
+  nameTr: string;
+  chambers?: number;
+  boards?: number;
+}
+
+export interface CourtDecision {
+  id: string;
+  institution: string; // Yargıtay, Danıştay, etc.
+  chamber?: string;
+  decisionNumber: string;
+  decisionDate: Date;
+  caseNumber?: string;
+  subject: string;
+  summary: string;
+  fullText: string;
+  keywords: string[];
+  relatedLaws: string[];
+  url?: string;
+}
+
+export interface LegalSearchQuery {
+  institution: LegalInstitution['code'];
+  keyword?: string;
+  exactPhrase?: string;
+  startDate?: Date;
+  endDate?: Date;
+  chamber?: string;
+  decisionNumber?: string;
+  limit?: number;
+}
+
+export interface LegalSearchResult {
+  query: LegalSearchQuery;
+  results: CourtDecision[];
+  totalResults: number;
+  searchDate: Date;
+  executionTime: number; // ms
+}
+
+export interface ContractAnalysis {
+  contractId: string;
+  contractType: string;
+  parties: string[];
+  analyzedDate: Date;
+  risks: LegalRisk[];
+  compliance: ComplianceCheck[];
+  recommendations: string[];
+  relatedDecisions: CourtDecision[];
+}
+
+export interface LegalRisk {
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  category: string;
+  description: string;
+  clause?: string;
+  recommendation: string;
+  relatedLaw?: string;
+}
+
+export interface ComplianceCheck {
+  area: string; // e.g., 'maritime-law', 'tourism-law', 'contract-law'
+  compliant: boolean;
+  requirements: string[];
+  violations: string[];
+  recommendedActions: string[];
+}
+
+export interface LegalConsultation {
+  id: string;
+  requesterId: string; // Node ID that requested consultation
+  consultationType: 'contract-review' | 'compliance-check' | 'legal-opinion' | 'case-research';
+  subject: string;
+  details: any;
+  response: {
+    opinion: string;
+    risks: LegalRisk[];
+    recommendations: string[];
+    relevantDecisions: CourtDecision[];
+    relevantLaws: string[];
+  };
+  createdAt: Date;
+  status: 'pending' | 'in-progress' | 'completed';
+}
+
+export interface LegalDocument {
+  id: string;
+  type: 'contract' | 'agreement' | 'terms' | 'policy' | 'legal-opinion';
+  title: string;
+  parties: string[];
+  content: string;
+  createdDate: Date;
+  effectiveDate?: Date;
+  expiryDate?: Date;
+  status: 'draft' | 'active' | 'expired' | 'terminated';
+  analysis?: ContractAnalysis;
 }

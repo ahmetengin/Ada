@@ -23,7 +23,8 @@ ada-ecosystem/
 │   ├── ada.sea/              # Yat yönetimi node'u
 │   ├── ada.marina/           # Marina yönetimi node'u
 │   ├── ada.travel/           # Seyahat acentesi node'u
-│   └── ada.congress/         # Kongre yönetimi node'u
+│   ├── ada.congress/         # Kongre yönetimi node'u
+│   └── ada.hukuk/            # Hukuki danışmanlık node'u
 │
 └── examples/                  # Örnek kullanımlar
     └── ecosystem-demo.ts     # Tam ekosistem demosu
@@ -78,6 +79,48 @@ Katılımcıları evlerinden alıp, etkinlik boyunca yöneterek, tekrar evlerine
 - 📱 Apple PassKit QR kod entegrasyonu
 - 🗓️ Tam itinerari (yolculuk planı) yönetimi
 - ✈️ Lojistik koordinasyon
+
+### 5. **ada.hukuk** - Hukuki Danışmanlık Node'u
+
+Türk hukuk sistemine entegre, AI destekli hukuki danışmanlık hizmeti. Tüm node'lara hukuki destek sağlar.
+
+**Yetenekler:**
+- ⚖️ Mahkeme kararları arama (Yargıtay, Danıştay, Anayasa Mahkemesi, vs.)
+- 📋 Sözleşme analizi ve risk değerlendirmesi
+- ✅ Uyumluluk kontrolü
+- 🔍 Hukuki araştırma ve içtihat taraması
+- 📄 Denizcilik hukuku (marina, yat charter)
+- 🏖️ Turizm hukuku (seyahat, otel)
+- 🎯 Etkinlik hukuku (kongre, organizasyon)
+
+**Entegrasyonlar:**
+- [yargi-mcp](https://github.com/saidsurucu/yargi-mcp) - Türk mahkeme kararları veritabanı
+- Yargıtay (52 daire), Danıştay (27 daire)
+- Anayasa Mahkemesi, Sayıştay, Rekabet Kurulu
+- KVKK, Kamu İhale Kurumu
+
+**Kullanım Örneği:**
+```typescript
+// Sözleşme analizi
+const analysis = await legalNode.processTask({
+  type: 'analyze-contract',
+  data: {
+    contractType: 'marina-contract',
+    content: contractText,
+    parties: ['WIM', 'Yacht Owner'],
+  },
+});
+
+// Mahkeme kararı arama
+const decisions = await legalNode.processTask({
+  type: 'search-decisions',
+  data: {
+    institution: 'yargitay',
+    keyword: 'deniz hukuku',
+    limit: 10,
+  },
+});
+```
 
 ## 🧬 Kendini Çoğaltma (Self-Replication)
 

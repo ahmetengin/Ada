@@ -416,6 +416,7 @@ export abstract class BaseNode extends EventEmitter {
       'ada.marina': 0,
       'ada.travel': 0,
       'ada.congress': 0,
+      'ada.hukuk': 0,
     };
 
     let totalClones = 0;
