@@ -11,6 +11,7 @@ from ada.models.base import TenantScopedModel
 if TYPE_CHECKING:
     from ada.models.tenant import Tenant
     from ada.models.user import User
+    from ada.models.seal_agent import SEALAgent
 
 
 class Fleet(TenantScopedModel):
@@ -75,6 +76,12 @@ class Fleet(TenantScopedModel):
 
     users: Mapped[list["User"]] = relationship(
         "User",
+        back_populates="fleet",
+        cascade="all, delete-orphan",
+    )
+
+    seal_agents: Mapped[list["SEALAgent"]] = relationship(
+        "SEALAgent",
         back_populates="fleet",
         cascade="all, delete-orphan",
     )
