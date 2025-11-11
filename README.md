@@ -28,6 +28,19 @@ Each level has:
 - Automatic timestamp tracking (`created_at`, `updated_at`)
 - Proper foreign key relationships with cascading deletes
 
+### Multi-Agent Observability
+
+Ada includes a **comprehensive observability system** for real-time monitoring and visualization of the multi-agent ecosystem:
+
+- **Real-time event streaming** - Live tracking of agent lifecycle, communication, and performance
+- **Interactive dashboard** - Vue 3 dashboard with agent status, load monitoring, and event streams
+- **Agent genealogy tracking** - Visualize parent-child relationships for cloned agents
+- **Performance metrics** - Monitor load, auto-scaling triggers, and system health
+- **WebSocket streaming** - Instant updates as events occur
+- **SQLite persistence** - Historical event data with efficient querying
+
+See [observability/README.md](observability/README.md) for detailed documentation.
+
 ## 🛠️ Technology Stack
 
 ### Core Framework
@@ -263,8 +276,38 @@ Index("ix_users_tenant_email", "tenant_id", "email", unique=True)
 5. **Create** new entity in database
 6. **Handle** relationships (optional)
 
+## 📊 Multi-Agent Observability
+
+The observability system provides comprehensive monitoring of Ada's multi-agent ecosystem:
+
+### Quick Start
+
+1. **Start the observability server:**
+   ```bash
+   cd observability/server
+   bun install && bun run dev
+   ```
+
+2. **Start the dashboard:**
+   ```bash
+   cd observability/dashboard
+   npm install && npm run dev
+   ```
+
+3. **Access the dashboard:**
+   Open http://localhost:5173 in your browser
+
+The dashboard provides:
+- **Overview**: System statistics and charts
+- **Agents**: All active agents with status and load
+- **Events**: Real-time event stream
+- **Sessions**: Session tracking and management
+
+See [observability/README.md](observability/README.md) for full documentation.
+
 ## 🚧 Roadmap
 
+- [x] Multi-agent observability system
 - [ ] API endpoints for CRUD operations
 - [ ] Authentication & authorization
 - [ ] Agent integration (SEAL, skills)
