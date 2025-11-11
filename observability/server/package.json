@@ -1,0 +1,21 @@
+{
+  "name": "ada-observability-server",
+  "version": "1.0.0",
+  "description": "Multi-agent observability server for Ada ecosystem",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "start": "bun run src/index.ts",
+    "build": "bun build src/index.ts --outdir dist --target node"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.0.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.12",
+    "bun-types": "^1.1.0"
+  }
+}
