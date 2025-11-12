@@ -269,11 +269,71 @@
         </div>
       </div>
     </div>
+
+    <!-- Map Display Section -->
+    <div class="map-section">
+      <div class="map-selector">
+        <div class="selector-title">📡 MAP DISPLAYS</div>
+        <div class="selector-buttons">
+          <button
+            class="map-btn"
+            :class="{ active: activeMap === 'svg' }"
+            @click="toggleMap('svg')"
+          >
+            SVG MAP
+          </button>
+          <button
+            class="map-btn"
+            :class="{ active: activeMap === 'leaflet' }"
+            @click="toggleMap('leaflet')"
+          >
+            OPENSTREETMAP
+          </button>
+          <button
+            class="map-btn flightradar"
+            :class="{ active: activeMap === 'flightradar' }"
+            @click="toggleMap('flightradar')"
+          >
+            FLIGHTRADAR24 STYLE
+          </button>
+        </div>
+      </div>
+
+      <!-- Maps -->
+      <div v-show="activeMap === 'svg'" class="map-container">
+        <SimpleSVGMap
+          :position="data?.position"
+          :heading="data?.heading?.magnetic"
+          :apiUrl="apiUrl"
+        />
+      </div>
+
+      <div v-show="activeMap === 'leaflet'" class="map-container">
+        <LeafletMap
+          :position="data?.position"
+          :heading="data?.heading?.magnetic"
+          :apiUrl="apiUrl"
+        />
+      </div>
+
+      <div v-show="activeMap === 'flightradar'" class="map-container">
+        <FlightradarMap
+          :position="data?.position"
+          :heading="data?.heading?.magnetic"
+          :speed="data?.speed?.overGround"
+          :depth="data?.depth"
+          :apiUrl="apiUrl"
+        />
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
+import SimpleSVGMap from './maps/SimpleSVGMap.vue';
+import LeafletMap from './maps/LeafletMap.vue';
+import FlightradarMap from './maps/FlightradarMap.vue';
 
 // Props
 const props = defineProps<{
@@ -284,6 +344,7 @@ const props = defineProps<{
 const data = ref<any>(null);
 const currentTime = ref('');
 const warnings = ref<Array<{ id: number; level: string; text: string }>>([]);
+const activeMap = ref<'svg' | 'leaflet' | 'flightradar' | null>(null);
 
 const cardinals = [
   { label: 'N', angle: 0 },
@@ -350,6 +411,15 @@ function getWarningIcon(level: string): string {
 function updateTime(): void {
   const now = new Date();
   currentTime.value = now.toTimeString().split(' ')[0];
+}
+
+function toggleMap(mapType: 'svg' | 'leaflet' | 'flightradar'): void {
+  // Toggle on/off - if clicking active map, hide it
+  if (activeMap.value === mapType) {
+    activeMap.value = null;
+  } else {
+    activeMap.value = mapType;
+  }
 }
 
 function checkWarnings(): void {
@@ -815,6 +885,98 @@ onUnmounted(() => {
   font-weight: 700;
 }
 
+/* Map Section */
+.map-section {
+  margin-top: 1rem;
+  background: #000;
+  border: 2px solid #00ff00;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.map-selector {
+  padding: 1rem;
+  background: linear-gradient(180deg, #003300 0%, #001a00 100%);
+  border-bottom: 1px solid #00ff00;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.selector-title {
+  color: #00ff00;
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+.selector-buttons {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.map-btn {
+  background: rgba(0, 255, 0, 0.1);
+  border: 2px solid #00ff00;
+  color: #00ff00;
+  padding: 0.75rem 1.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 700;
+  font-family: 'Courier New', monospace;
+  letter-spacing: 0.05em;
+  transition: all 0.2s;
+  text-transform: uppercase;
+}
+
+.map-btn:hover {
+  background: rgba(0, 255, 0, 0.2);
+  box-shadow: 0 0 15px rgba(0, 255, 0, 0.3);
+  transform: translateY(-2px);
+}
+
+.map-btn.active {
+  background: rgba(0, 255, 0, 0.3);
+  box-shadow: 0 0 20px rgba(0, 255, 0, 0.5);
+  border-color: #00ff00;
+}
+
+.map-btn.flightradar {
+  border-color: #00ff88;
+  color: #00ff88;
+  background: rgba(0, 255, 136, 0.1);
+}
+
+.map-btn.flightradar:hover {
+  background: rgba(0, 255, 136, 0.2);
+  box-shadow: 0 0 15px rgba(0, 255, 136, 0.3);
+}
+
+.map-btn.flightradar.active {
+  background: rgba(0, 255, 136, 0.3);
+  box-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
+}
+
+.map-container {
+  padding: 1rem;
+  animation: mapFadeIn 0.3s ease-in-out;
+}
+
+@keyframes mapFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* Responsive */
 @media (max-width: 1200px) {
   .instrument-panel {
@@ -828,6 +990,15 @@ onUnmounted(() => {
   .warning-section {
     border-right: none;
     border-bottom: 1px solid #003300;
+  }
+
+  .selector-buttons {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .map-btn {
+    width: 100%;
   }
 }
 </style>
