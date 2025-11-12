@@ -17,7 +17,7 @@ import { VHFRaceMode } from './services/VHFRaceMode.js';
 import { AdaObserver } from './services/AdaObserver.js';
 
 export interface SeaNodeConfig extends Omit<BaseNodeOptions, 'type' | 'capabilities'> {
-  vessel: VesselData;
+  vessel?: VesselData;
   name: string;
 }
 
@@ -42,6 +42,17 @@ export class SeaNode extends BaseNode {
   private nmeaDataBuffer: ParsedNMEAData[] = [];
 
   constructor(config: SeaNodeConfig) {
+    // Provide default vessel config if not specified (e.g., during cloning)
+    const defaultVessel: VesselData = config.vessel || {
+      name: config.name || 'Unknown Vessel',
+      imo: 'IMO0000000',
+      mmsi: '000000000',
+      length: 24,
+      beam: 6,
+      draft: 2.5,
+      type: 'Sailing Yacht',
+    };
+
     super({
       ...config,
       type: 'ada.sea',
@@ -86,7 +97,7 @@ export class SeaNode extends BaseNode {
       },
     });
 
-    this.vessel = config.vessel;
+    this.vessel = defaultVessel;
 
     // Initialize services
     this.nmea2000Parser = new NMEA2000Parser();
@@ -105,7 +116,7 @@ export class SeaNode extends BaseNode {
 
     // Initialize Ada Observer
     this.observer = new AdaObserver({
-      vesselName: config.vessel.name,
+      vesselName: defaultVessel.name,
       bowRollerHeight: 1.5, // Default 1.5m - should be configurable
       enableAutoLogging: true,
       enableStateDetection: true,

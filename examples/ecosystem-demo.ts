@@ -157,6 +157,9 @@ async function main() {
   console.log(`   - Venue: ${event.venue.name}`);
   console.log(`   - Expected attendees: ${event.expectedAttendees}`);
 
+  // Open registration (manually update event status for demo)
+  event.status = 'registration-open';
+
   // ==========================================
   // 7. Register Attendee with Complete Journey
   // ==========================================
@@ -185,19 +188,23 @@ async function main() {
     },
   });
 
-  console.log('✅ Attendee registered:');
-  console.log(`   - Registration ID: ${attendeeRegistration.registration.id}`);
-  console.log(`   - Package: ${attendeeRegistration.registration.packageType}`);
-  console.log(`   - Amount: $${attendeeRegistration.registration.amount}`);
-  console.log(`   - Itinerary steps: ${attendeeRegistration.itinerary.steps.length}`);
-  console.log(`   - Apple Pass: ${attendeeRegistration.applePassUrl}`);
+  if (!attendeeRegistration.success) {
+    console.log(`❌ Registration failed: ${attendeeRegistration.message}`);
+  } else {
+    console.log('✅ Attendee registered:');
+    console.log(`   - Registration ID: ${attendeeRegistration.registration.id}`);
+    console.log(`   - Package: ${attendeeRegistration.registration.packageType}`);
+    console.log(`   - Amount: $${attendeeRegistration.registration.amount}`);
+    console.log(`   - Itinerary steps: ${attendeeRegistration.itinerary.steps.length}`);
+    console.log(`   - Apple Pass: ${attendeeRegistration.applePassUrl}`);
 
-  console.log('\n📋 Itinerary breakdown:');
-  attendeeRegistration.itinerary.steps.slice(0, 5).forEach((step: any, index: number) => {
-    console.log(`   ${index + 1}. ${step.type.toUpperCase()}: ${step.description}`);
-    console.log(`      Time: ${step.scheduledTime.toLocaleString()}`);
-  });
-  console.log(`   ... and ${attendeeRegistration.itinerary.steps.length - 5} more steps`);
+    console.log('\n📋 Itinerary breakdown:');
+    attendeeRegistration.itinerary.steps.slice(0, 5).forEach((step: any, index: number) => {
+      console.log(`   ${index + 1}. ${step.type.toUpperCase()}: ${step.description}`);
+      console.log(`      Time: ${step.scheduledTime.toLocaleString()}`);
+    });
+    console.log(`   ... and ${attendeeRegistration.itinerary.steps.length - 5} more steps`);
+  }
 
   // ==========================================
   // 8. Demonstrate Node Cloning
