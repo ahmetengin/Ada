@@ -56,15 +56,26 @@ class User(TenantScopedModel):
     first_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     last_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
-    # Authentication (hashed password would go here in production)
-    # password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Authentication
+    password_hash: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        comment="Hashed password for user authentication"
+    )
 
     # Role within the tenant/fleet
     role: Mapped[str] = mapped_column(
         String(50),
         default="user",
         nullable=False,
-        comment="User role (e.g., 'admin', 'manager', 'user', 'guest')",
+        comment="User role (e.g., 'Captain', 'Mechanic', 'Engineer', 'admin', 'manager', 'user', 'guest')",
+    )
+
+    # Group within organization (for larger vessels)
+    group: Mapped[str | None] = mapped_column(
+        String(50),
+        nullable=True,
+        comment="User group (e.g., 'Helm', 'Bridge', 'Engineering', 'Deck')",
     )
 
     # Status
@@ -129,6 +140,7 @@ class User(TenantScopedModel):
                 "last_name": self.last_name,
                 "full_name": self.full_name,
                 "role": self.role,
+                "group": self.group,
                 "is_active": self.is_active,
                 "is_verified": self.is_verified,
                 "phone": self.phone,
