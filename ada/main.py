@@ -55,13 +55,13 @@ async def health_check():
 
 
 # API routers
-from ada.api import seal
+from ada.api import seal, users
 
 app.include_router(seal.router, prefix="/api/v1/seal", tags=["SEAL"])
+app.include_router(users.router, prefix="/api/v1")
 
-# TODO: Add API routers for tenants, fleets, users, cloning operations
-# from ada.api import tenants, fleets, users, cloning
+# TODO: Add API routers for tenants, fleets, cloning operations
+# from ada.api import tenants, fleets, cloning
 # app.include_router(tenants.router, prefix="/api/v1/tenants", tags=["tenants"])
 # app.include_router(fleets.router, prefix="/api/v1/fleets", tags=["fleets"])
-# app.include_router(users.router, prefix="/api/v1/users", tags=["users"])
 # app.include_router(cloning.router, prefix="/api/v1/cloning", tags=["cloning"])

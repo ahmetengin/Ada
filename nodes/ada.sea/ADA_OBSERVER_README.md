@@ -1,98 +1,98 @@
 # Ada Observer 🧭
 
-**Zora-tarzı Akıllı Yat Monitoring Sistemi**
+**Intelligent Yacht Monitoring System by Ada.Sea**
 
-Ada Observer, denizcilik dünyasının önde gelen navigasyon sistemi Zora 3.0'dan ilham alınarak geliştirilmiş, Ada.Sea node'u için yeni nesil akıllı izleme ve yönetim platformudur.
+Ada Observer is a next-generation intelligent monitoring and management platform for the Ada.Sea node, designed specifically for modern sailing vessels.
 
-## 🌟 Özellikler
+## 🌟 Features
 
-### 1. Vessel State Intelligence (Gemi Durumu Zekası)
-Ada Observer, geminin o anki durumunu otomatik olarak algılar ve buna göre gösterge panelini dinamik olarak ayarlar.
+### 1. Vessel State Intelligence
+Ada Observer automatically detects the vessel's current state and dynamically adjusts the dashboard accordingly.
 
-**Desteklenen Durumlar:**
-- `pre-departure` - Kalkış öncesi kontroller
-- `at-anchor` / `anchored` - Demir atmış / demirleme
-- `underway-sailing` - Yelkenle seyir
-- `underway-motoring` - Motorla seyir
-- `underway-motorsailing` - Motor + yelken
-- `drifting` - Sürüklenme
-- `docking` / `docked` - Yanaşma / yanaşmış
-- `moored` - Bağlı
-- `engine-room-check` - Motor kontrolü
-- `maintenance` / `off-season` - Bakım / sezon dışı
+**Supported States:**
+- `pre-departure` - Pre-departure checks
+- `at-anchor` / `anchored` - At anchor / anchored
+- `underway-sailing` - Under sail
+- `underway-motoring` - Under power
+- `underway-motorsailing` - Motor + sail
+- `drifting` - Drifting
+- `docking` / `docked` - Docking / docked
+- `moored` - Moored
+- `engine-room-check` - Engine check
+- `maintenance` / `off-season` - Maintenance / off-season
 
-**Akıllı Algılama:**
+**Smart Detection:**
 ```typescript
-// NMEA2000 verilerinden otomatik durum tespiti
+// Automatic state detection from NMEA2000 data
 const state = observer.detectVesselState();
-// confidence: 0-100 (güvenilirlik skoru)
+// confidence: 0-100 (confidence score)
 ```
 
 ### 2. Primary Navigation Display (PND) 🧭
 
-Zora'nın ikonik "fütüristik pusula" ekranı, Ada Observer'da da tam olarak implement edilmiştir.
+The iconic "futuristic compass" display, fully implemented in Ada Observer.
 
-**Özellikler:**
-- **360° Pusula Halkası** - Gerçek zamanlı heading göstergesi
-- **Above Water Zone** - Rüzgar verileri (apparent & true wind)
-- **Below Water Zone** - Derinlik, STW, SOG verileri
+**Features:**
+- **360° Compass Ring** - Real-time heading indicator
+- **Above Water Zone** - Wind data (apparent & true wind)
+- **Below Water Zone** - Depth, STW, SOG data
 - **Heading Display** - Magnetic & True heading
-- **Wind Indicators** - Görünür ve gerçek rüzgar okları
-- **Autopilot Target** - Otopilot hedef göstergesi
-- **Quick Data Cards** - Hızlı erişim kartları (Wind, Position, Speed, Depth)
+- **Wind Indicators** - Apparent and true wind arrows
+- **Autopilot Target** - Autopilot target indicator
+- **Quick Data Cards** - Quick access cards (Wind, Position, Speed, Depth)
 
-**Kullanım:**
+**Usage:**
 ```vue
 <PrimaryNavigationDisplay :apiUrl="http://localhost:8000" />
 ```
 
 ### 3. Smart Anchor Watch ⚓
 
-Zora'nın en etkileyici özelliklerinden biri - akıllı demir alarmı.
+Intelligent anchor alarm with advanced drag detection.
 
-**Akıllı Özellikler:**
-- ✅ **Gelgit Farkındalığı** - Gelgit yükselmesi/alçalması ile yarıçapı otomatik ayarlar
-- ✅ **Gerçek Geometri Hesabı** - Zincir uzunluğu, su derinliği ve baş silindiri yüksekliği
-- ✅ **Scope Hesaplama** - Otomatik scope ratio (zincir/derinlik oranı)
-- ✅ **Sürüklenme Tespiti** - Gerçek zamanlı pozisyon kontrolü
-- ✅ **Away Mode Entegrasyonu** - SMS/Email bildirimleri
+**Smart Features:**
+- ✅ **Tide Awareness** - Automatically adjusts radius for tidal rise/fall
+- ✅ **Real Geometry Calculation** - Chain length, water depth, and bow roller height
+- ✅ **Scope Calculation** - Automatic scope ratio (chain/depth ratio)
+- ✅ **Drag Detection** - Real-time position monitoring
+- ✅ **Away Mode Integration** - SMS/Email notifications
 
-**Örnek Kullanım:**
+**Example Usage:**
 ```typescript
 const anchorWatch = observer.startAnchorWatch({
-  chainLength: 30, // 30m zincir
-  waterDepth: 5,   // 5m derinlik
-  manualAdjustment: 5 // +5m güvenlik marjı
+  chainLength: 30, // 30m chain
+  waterDepth: 5,   // 5m depth
+  manualAdjustment: 5 // +5m safety margin
 });
 
-// Otomatik hesaplanan değerler:
-// scope: 5.1:1 (30m / (5m + 1.5m baş silindiri))
-// horizontalChain: ~29.6m (pitagor)
+// Automatically calculated values:
+// scope: 5.1:1 (30m / (5m + 1.5m bow roller))
+// horizontalChain: ~29.6m (Pythagorean)
 // swingRadius: ~34.6m (29.6 + 5)
 ```
 
-**Önemli:** Zora'dan farklı olarak, Ada Observer scope hesaplamasında baş silindiri yüksekliğini de dikkate alır!
+**Important:** Ada Observer includes bow roller height in scope calculations for maximum accuracy!
 
 ### 4. Automatic Logbook 📔
 
-Tüm seyir olayları otomatik olarak loglanır.
+All voyage events are automatically logged.
 
-**Otomatik Log Kayıtları:**
-- Durum değişiklikleri (yelken açma, motor çalıştırma, demir atma)
-- Pozisyon, hız, rota bilgileri
-- Hava durumu koşulları
-- Motor saatleri ve yakıt tüketimi
+**Automatic Log Entries:**
+- State changes (setting sails, starting engine, anchoring)
+- Position, speed, course information
+- Weather conditions
+- Engine hours and fuel consumption
 
-**Manuel Kayıt:**
+**Manual Entry:**
 ```typescript
-// Sesli not ile log
+// Voice note log
 observer.createAutoLog({
   type: 'voice',
   voiceTranscription: 'Dolphins spotted at starboard side!',
   photos: ['IMG_1234.jpg', 'IMG_1235.jpg']
 });
 
-// Manuel not
+// Manual note
 observer.createAutoLog({
   type: 'manual',
   notes: 'Reef taken at 20kts wind',
@@ -106,37 +106,37 @@ observer.createAutoLog({
 
 ### 5. Voyage Journey Tracking 🗺️
 
-Her seyahat otomatik olarak takip edilir ve kaydedilir.
+Every voyage is automatically tracked and recorded.
 
-**Otomatik Başlatma/Bitirme:**
-- Demir kaldırılınca journey başlar
-- Varış limanında otomatik biter
+**Automatic Start/End:**
+- Journey starts when anchor is raised
+- Automatically ends at destination
 
-**Kaydedilen Bilgiler:**
-- Rota (tüm waypoint'ler)
-- Toplam mesafe (deniz mili)
-- Max/ortalama hız
-- Gemi durumları
-- Tüm log kayıtları
-- Hava durumu koşulları
+**Recorded Information:**
+- Route (all waypoints)
+- Total distance (nautical miles)
+- Max/average speed
+- Vessel states
+- All log entries
+- Weather conditions
 
 ### 6. Away Mode 📱
 
-Tekneden uzaktayken tam kontrol!
+Full control when you're away from the boat!
 
-**Bildirimler:**
-- 🚨 Demir sürüklenmesi
-- 💨 Yüksek rüzgar hızı
-- 🌊 Derinlik değişimi
-- 🔋 Batarya düşük
-- ⚠️ Sistem arızaları
+**Notifications:**
+- 🚨 Anchor dragging
+- 💨 High wind speed
+- 🌊 Depth changes
+- 🔋 Low battery
+- ⚠️ System failures
 
-**Çoklu Kanal:**
+**Multi-Channel:**
 - SMS
 - Email
 - Push Notifications
 
-**Kullanım:**
+**Usage:**
 ```typescript
 observer.enableAwayMode({
   userId: 'captain@ship.com',
@@ -159,12 +159,12 @@ observer.enableAwayMode({
 
 ### 7. Maintenance Management 🔧
 
-**Özellikler:**
-- Görev yönetimi (Kanban tarzı: Idea → Todo → In Progress → Completed)
-- Maliyet takibi (tahmini vs gerçekleşen)
-- Fatura/makbuz yükleme
-- Periyodik bakım hatırlatıcıları
-- Sistem bazlı logbook entegrasyonu
+**Features:**
+- Task management (Kanban style: Idea → Todo → In Progress → Completed)
+- Cost tracking (estimated vs actual)
+- Invoice/receipt upload
+- Periodic maintenance reminders
+- System-based logbook integration
 
 ```typescript
 observer.addMaintenanceTask({
@@ -176,13 +176,13 @@ observer.addMaintenanceTask({
   estimatedCost: 150,
   recurrence: {
     type: 'hours',
-    interval: 100, // Her 100 motor saatinde
+    interval: 100, // Every 100 engine hours
     nextDue: new Date('2025-12-01')
   }
 });
 ```
 
-## 🏗️ Mimari
+## 🏗️ Architecture
 
 ### Type Definitions
 ```typescript
@@ -238,14 +238,14 @@ observability/dashboard/src/components/
 └── MaintenanceManager.vue        (⏳ Coming Soon)
 ```
 
-## 🚀 Kurulum ve Kullanım
+## 🚀 Installation & Usage
 
-### 1. SeaNode Entegrasyonu
+### 1. SeaNode Integration
 
-Ada Observer, SeaNode'un başlatılması sırasında otomatik olarak initialize edilir:
+Ada Observer is automatically initialized when SeaNode starts:
 
 ```typescript
-// Ada Observer otomatik başlatılır
+// Ada Observer starts automatically
 const seaNode = new SeaNode({
   id: 'sea-1',
   name: 'My Yacht',
@@ -257,19 +257,19 @@ const seaNode = new SeaNode({
   }
 });
 
-// Observer'a erişim
+// Access the observer
 const observer = seaNode.getObserver();
 ```
 
-### 2. NMEA2000 Veri Akışı
+### 2. NMEA2000 Data Flow
 
-NMEA2000 verileri otomatik olarak Observer'a yönlendirilir:
+NMEA2000 data is automatically routed to the Observer:
 
 ```typescript
-// NMEA verisi geldiğinde
+// When NMEA data arrives
 seaNode.processNMEA2000Data(nmeaData);
 
-// Observer otomatik olarak güncellenir:
+// Observer automatically updates:
 // - Navigation data
 // - Vessel state detection
 // - Anchor watch monitoring
@@ -278,25 +278,25 @@ seaNode.processNMEA2000Data(nmeaData);
 ### 3. Event Handling
 
 ```typescript
-// State değişikliklerini dinle
+// Listen to state changes
 observer.on('state:change', (change) => {
   console.log(`Vessel state: ${change.from} → ${change.to}`);
 });
 
-// Demir sürüklenme alarmı
+// Anchor drag alarm
 observer.on('anchor:drag', (alert) => {
   console.log('⚠️ ANCHOR DRAGGING!', alert);
 });
 
-// Yeni log kaydı
+// New log entry
 observer.on('log:entry', (entry) => {
   console.log('New log entry:', entry);
 });
 ```
 
-### 4. Dashboard Erişimi
+### 4. Dashboard Access
 
-Observer dashboard'a web tarayıcıdan erişilebilir:
+The Observer dashboard is accessible via web browser:
 
 ```bash
 cd observability/dashboard
@@ -456,26 +456,12 @@ Tarayıcıda: `http://localhost:5173` → **Ada Observer** tab
 - [ ] CAN Bus Support
 - [ ] Raspberry Pi 5 Deployment
 
-## 🤝 Zora'dan İlham
+## 📝 License
 
-Ada Observer, **iNav4U** tarafından geliştirilen ve 2025 yılında Metstrade'de tanıtılan **Zora 3.0** platformundan ilham almıştır.
-
-**Zora 3.0'ın Öne Çıkan Özellikleri:**
-- Intelligent Operating System for Yachts
-- Multi-Protocol Engine (NMEA2000, Modbus, SignalK, CAN)
-- Situational Awareness & Emergency Workflow
-- Browser-Based Interface (Helm, Tablet, Phone, Laptop)
-- Professional Installation Network
-- Pre-order: $400 (Server) / $1500 (Server + Display Bundle)
-
-**Kaynak:** https://www.inav4u.com/zora
-
-## 📝 Lisans
-
-Ada Observer, Ada Multi-Agent Ecosystem'un bir parçasıdır.
+Ada Observer is part of the Ada Multi-Agent Ecosystem.
 
 ---
 
-**⚓ "Command with Clarity - The New Standard in Yacht Navigation"**
+**⚓ "Command with Clarity - Professional Yacht Monitoring by Ada.Sea"**
 
-*Ada Observer - Inspired by Zora, Built for Ada*
+*Ada Observer - Intelligent Maritime Intelligence*

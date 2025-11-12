@@ -34,7 +34,7 @@ export class SeaNode extends BaseNode {
   private vhfRadioService: VHFRadioService;
   private vhfMessageClassifier: VHFMessageClassifier;
   private vhfRaceMode?: VHFRaceMode;
-  private observer: AdaObserver; // Zora-style intelligent monitoring
+  private observer: AdaObserver; // Intelligent vessel monitoring
 
   // State
   private currentVoyage?: VoyagePlan;
@@ -103,7 +103,7 @@ export class SeaNode extends BaseNode {
     });
     this.vhfMessageClassifier = new VHFMessageClassifier();
 
-    // Initialize Ada Observer (Zora-style monitoring)
+    // Initialize Ada Observer
     this.observer = new AdaObserver({
       vesselName: config.vessel.name,
       bowRollerHeight: 1.5, // Default 1.5m - should be configurable
