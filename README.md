@@ -59,6 +59,29 @@ Ada includes a **comprehensive observability system** for real-time monitoring a
 
 See [observability/README.md](observability/README.md) for detailed documentation.
 
+### Autonomous Agent Architecture 🤖
+
+**Ada is not a tool collection - it's a humanoid autonomous maritime agent.** Ada.Sea learns, grows skills, makes decisions, and thinks like a captain.
+
+**Key Principles:**
+
+- 🧠 **Knowledge Accumulation** - Builds maritime domain knowledge (weather, navigation, seamanship)
+- 🎯 **Skill Progression** - Develops from novice to expert through experience (anchoring, routing, weather analysis)
+- 📚 **Continuous Learning** - Every experience improves Ada via SEAL system
+- 🤔 **Autonomous Decision Making** - Makes intelligent decisions using knowledge + skills + experience
+- 👁️ **Proactive Behavior** - Anticipates problems before they happen, suggests solutions
+- 🌊 **Fleet Intelligence** - Learns from all vessels, shares knowledge across the fleet
+
+**Architecture Layers:**
+
+1. **Cognitive Layer** - Situation assessment, decision making, proactive suggestions
+2. **Knowledge Layer** - Maritime ontology, weather patterns, anchorage database, emergency procedures
+3. **Skill Layer** - Navigation (Basic→Expert), Weather Analysis (Novice→Master), Anchoring expertise
+4. **Learning Layer** - SEAL system: experience collection, pattern recognition, memory formation
+5. **Perception Layer** - NMEA2000 sensors, weather data, AIS/VHF, vessel state
+
+See [docs/ADA_AGENT_ARCHITECTURE.md](docs/ADA_AGENT_ARCHITECTURE.md) for complete architecture.
+
 ### AI Voice Agent 🎤🤖
 
 **Ada's biggest differentiator** - Unlike competitors (Aquamap, Zora 3.0) that offer basic voice transcription, Ada provides a **full-fledged AI maritime assistant** powered by conversational AI and fleet-wide learning.
@@ -70,6 +93,7 @@ See [observability/README.md](observability/README.md) for detailed documentatio
 - 🗣️ **Multilingual** - Turkish, English, Greek (critical for Mediterranean operations)
 - ⚓ **Proactive Suggestions** - Not just answers questions, but provides intelligent recommendations
 - 🚨 **Emergency Voice Commands** - Hands-free Mayday, COB marking, emergency protocols
+- 🎓 **Skill-Based Responses** - Ada's expertise grows over time (novice → expert)
 
 **Example Interactions:**
 
