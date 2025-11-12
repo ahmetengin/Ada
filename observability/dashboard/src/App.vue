@@ -191,60 +191,72 @@
       </div>
 
       <!-- Ada Observer View -->
-      <div v-show="activeTab === 'observer'" class="tab-content">
-        <div class="observer-header">
-          <h2>🧭 Ada Observer - Intelligent Yacht Monitoring</h2>
-          <p class="observer-subtitle">Advanced vessel state intelligence and navigation</p>
+      <div v-show="activeTab === 'observer'" class="tab-content observer-cockpit">
+        <div class="cockpit-header">
+          <h2>✈️ ADA OBSERVER COCKPIT</h2>
+          <p class="cockpit-subtitle">AVIATION-STYLE INSTRUMENT PANEL FOR YACHT MONITORING</p>
         </div>
 
-        <PrimaryNavigationDisplay />
+        <CockpitDisplay :apiUrl="API_URL" />
 
-        <!-- Aegean-Specific Widgets -->
-        <div class="aegean-section">
-          <div class="section-title">
-            <h3>🌊 Aegean Intelligence</h3>
-            <p>Smart features designed for the Aegean Sea</p>
-          </div>
-          <div class="aegean-widgets-grid">
-            <MeltemWidget :apiUrl="API_URL" />
-            <GreekIslandsWidget
-              :apiUrl="API_URL"
-              :currentPosition="{ latitude: 37.0, longitude: 27.5 }"
-            />
-            <TurkishMarinaWidget
-              :apiUrl="API_URL"
-              :currentPosition="{ latitude: 37.0, longitude: 27.5 }"
-            />
-          </div>
+        <!-- Optional: Classic View Toggle -->
+        <div class="view-toggle">
+          <button class="toggle-btn" @click="showClassicView = !showClassicView">
+            {{ showClassicView ? '✈️ Switch to Cockpit View' : '🧭 Switch to Classic View' }}
+          </button>
         </div>
 
-        <div class="observer-features-grid">
-          <div class="feature-card">
-            <div class="feature-icon">⚓</div>
-            <h3>Smart Anchor Watch</h3>
-            <p>Intelligent anchor monitoring with tide awareness</p>
-            <button class="feature-btn">Coming Soon</button>
+        <!-- Classic View (Hidden by default) -->
+        <div v-show="showClassicView" class="classic-view">
+          <PrimaryNavigationDisplay />
+
+          <!-- Aegean-Specific Widgets -->
+          <div class="aegean-section">
+            <div class="section-title">
+              <h3>🌊 Aegean Intelligence</h3>
+              <p>Smart features designed for the Aegean Sea</p>
+            </div>
+            <div class="aegean-widgets-grid">
+              <MeltemWidget :apiUrl="API_URL" />
+              <GreekIslandsWidget
+                :apiUrl="API_URL"
+                :currentPosition="{ latitude: 37.0, longitude: 27.5 }"
+              />
+              <TurkishMarinaWidget
+                :apiUrl="API_URL"
+                :currentPosition="{ latitude: 37.0, longitude: 27.5 }"
+              />
+            </div>
           </div>
 
-          <div class="feature-card">
-            <div class="feature-icon">📔</div>
-            <h3>Automatic Logbook</h3>
-            <p>Voice-enabled logging with photo support</p>
-            <button class="feature-btn">Coming Soon</button>
-          </div>
+          <div class="observer-features-grid">
+            <div class="feature-card">
+              <div class="feature-icon">⚓</div>
+              <h3>Smart Anchor Watch</h3>
+              <p>Intelligent anchor monitoring with tide awareness</p>
+              <button class="feature-btn">Coming Soon</button>
+            </div>
 
-          <div class="feature-card">
-            <div class="feature-icon">🔧</div>
-            <h3>Maintenance</h3>
-            <p>Track tasks, costs, and schedules</p>
-            <button class="feature-btn">Coming Soon</button>
-          </div>
+            <div class="feature-card">
+              <div class="feature-icon">📔</div>
+              <h3>Automatic Logbook</h3>
+              <p>Voice-enabled logging with photo support</p>
+              <button class="feature-btn">Coming Soon</button>
+            </div>
 
-          <div class="feature-card">
-            <div class="feature-icon">📱</div>
-            <h3>Away Mode</h3>
-            <p>SMS/Email notifications when off-boat</p>
-            <button class="feature-btn">Coming Soon</button>
+            <div class="feature-card">
+              <div class="feature-icon">🔧</div>
+              <h3>Maintenance</h3>
+              <p>Track tasks, costs, and schedules</p>
+              <button class="feature-btn">Coming Soon</button>
+            </div>
+
+            <div class="feature-card">
+              <div class="feature-icon">📱</div>
+              <h3>Away Mode</h3>
+              <p>SMS/Email notifications when off-boat</p>
+              <button class="feature-btn">Coming Soon</button>
+            </div>
           </div>
         </div>
       </div>
@@ -262,6 +274,7 @@ import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import { formatDistanceToNow, format } from 'date-fns';
 import VHFMonitor from './components/VHFMonitor.vue';
 import PrimaryNavigationDisplay from './components/PrimaryNavigationDisplay.vue';
+import CockpitDisplay from './components/CockpitDisplay.vue';
 import MeltemWidget from './components/MeltemWidget.vue';
 import GreekIslandsWidget from './components/GreekIslandsWidget.vue';
 import TurkishMarinaWidget from './components/TurkishMarinaWidget.vue';
@@ -274,6 +287,7 @@ const WS_URL = 'ws://localhost:8765/stream';
 const activeTab = ref('overview');
 const wsConnected = ref(false);
 const autoScroll = ref(true);
+const showClassicView = ref(false);
 const stats = ref({
   total_agents: 0,
   active_agents: 0,
@@ -293,7 +307,7 @@ let ws: WebSocket | null = null;
 // Tabs
 const tabs = [
   { id: 'overview', label: 'Overview', icon: '📊' },
-  { id: 'observer', label: 'Ada Observer', icon: '⛵' },
+  { id: 'observer', label: 'Ada Observer Cockpit', icon: '✈️' },
   { id: 'agents', label: 'Agents', icon: '🤖' },
   { id: 'events', label: 'Events', icon: '📡' },
   { id: 'sessions', label: 'Sessions', icon: '🔗' },
@@ -1133,5 +1147,72 @@ onMounted(() => {
   .aegean-section {
     padding: 1rem;
   }
+}
+
+/* Cockpit Styles */
+.observer-cockpit {
+  background: #000;
+  border-radius: 8px;
+  padding: 0;
+}
+
+.cockpit-header {
+  text-align: center;
+  padding: 2rem 2rem 1rem;
+  background: linear-gradient(180deg, #000 0%, #001a00 100%);
+  border-bottom: 2px solid #00ff00;
+}
+
+.cockpit-header h2 {
+  color: #00ff00;
+  font-size: 2rem;
+  font-weight: 700;
+  font-family: 'Courier New', monospace;
+  letter-spacing: 0.2em;
+  margin-bottom: 0.5rem;
+  text-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+}
+
+.cockpit-subtitle {
+  color: #00ff00;
+  font-size: 0.875rem;
+  font-family: 'Courier New', monospace;
+  letter-spacing: 0.1em;
+  opacity: 0.7;
+}
+
+.view-toggle {
+  text-align: center;
+  padding: 1rem;
+  background: #000;
+  border-top: 1px solid #003300;
+}
+
+.toggle-btn {
+  background: rgba(0, 255, 0, 0.1);
+  border: 2px solid #00ff00;
+  color: #00ff00;
+  padding: 0.75rem 2rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 700;
+  font-family: 'Courier New', monospace;
+  letter-spacing: 0.05em;
+  transition: all 0.2s;
+  text-transform: uppercase;
+}
+
+.toggle-btn:hover {
+  background: rgba(0, 255, 0, 0.2);
+  box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
+  transform: scale(1.05);
+}
+
+.classic-view {
+  padding: 2rem;
+  background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+  border-radius: 8px;
+  margin-top: 1rem;
 }
 </style>
