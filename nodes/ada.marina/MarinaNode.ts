@@ -218,6 +218,13 @@ export class MarinaNode extends BaseNode {
     // Log event
     this.remember('data', { reservation, berth }, ['reservation'], 8);
 
+    // Create invoice via Finance node
+    this.createInvoiceForReservation(reservation.id, data.vesselId, data.vesselName, berth, days)
+      .catch(error => {
+        console.error('Failed to create invoice:', error.message);
+        // Continue even if invoice fails - reservation is still valid
+      });
+
     // Notify yacht node if present
     if (data.contactNode) {
       this.sendMessage(
@@ -242,6 +249,52 @@ export class MarinaNode extends BaseNode {
         amenities: berth.amenities,
       },
     };
+  }
+
+  /**
+   * Create invoice for reservation via Finance node
+   */
+  private async createInvoiceForReservation(
+    reservationId: string,
+    vesselId: string,
+    vesselName: string,
+    berth: any,
+    days: number
+  ): Promise<void> {
+    const financeNodes = BaseNode.findNodesByType('ada.finance');
+    if (financeNodes.length === 0) {
+      console.log('No finance node available for invoice creation');
+      return;
+    }
+
+    try {
+      const invoiceResponse = await this.requestFromNode(
+        financeNodes[0].getIdentity().id,
+        'create-invoice',
+        {
+          customerId: vesselId,
+          customerName: vesselName,
+          items: [
+            {
+              description: `Berth Rental - ${berth.number} (${days} days)`,
+              quantity: days,
+              unitPrice: berth.price.daily,
+              vatRate: 20, // %20 KDV
+            },
+          ],
+          withholdingRate: 0,
+        }
+      );
+
+      this.remember('data', {
+        reservationId,
+        invoice: invoiceResponse,
+      }, ['invoice', 'finance'], 8);
+
+      console.log(`✅ Invoice created for reservation ${reservationId}: ${invoiceResponse.invoice?.invoiceNumber}`);
+    } catch (error: any) {
+      console.error(`Failed to create invoice for reservation ${reservationId}:`, error.message);
+    }
   }
 
   /**
@@ -461,6 +514,47 @@ export class MarinaNode extends BaseNode {
     services.forEach(service => {
       this.reservationService.registerService(service);
     });
+  }
+
+  /**
+   * Request facility maintenance from Maintenance node
+   */
+  async requestFacilityMaintenance(issue: {
+    location: string;
+    category: string;
+    description: string;
+    priority: 'low' | 'medium' | 'high';
+  }): Promise<any> {
+    const maintenanceNodes = BaseNode.findNodesByType('ada.maintenance');
+    if (maintenanceNodes.length === 0) {
+      console.log('No maintenance node available');
+      return { error: 'No maintenance node available' };
+    }
+
+    try {
+      const result = await this.requestFromNode(
+        maintenanceNodes[0].getIdentity().id,
+        'request-maintenance',
+        {
+          requesterId: this.identity.id,
+          requesterName: this.marinaInfo.name,
+          category: issue.category,
+          description: `${this.marinaInfo.name} - ${issue.location}: ${issue.description}`,
+          type: issue.priority === 'high' ? 'emergency' : 'scheduled',
+        }
+      );
+
+      this.remember('data', {
+        maintenanceRequest: result,
+        location: issue.location,
+      }, ['maintenance', 'facility'], 7);
+
+      console.log(`✅ Maintenance request created for ${issue.location}`);
+      return result;
+    } catch (error: any) {
+      console.error('Failed to request maintenance:', error.message);
+      return { error: error.message };
+    }
   }
 
   /**

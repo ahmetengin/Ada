@@ -136,6 +136,7 @@ export class CongressNode extends BaseNode {
     endDate: Date;
     venue: VenueInfo;
     expectedAttendees: number;
+    includeGalaDinner?: boolean;
   }): CongressEvent {
     const event: CongressEvent = {
       id: uuidv4(),
@@ -151,7 +152,64 @@ export class CongressNode extends BaseNode {
 
     this.remember('data', { event }, ['event', 'planning'], 9);
 
+    // Plan gala dinner if requested
+    if (data.includeGalaDinner !== false) {
+      this.planGalaDinner(event.id, data.expectedAttendees)
+        .catch(error => {
+          console.error('Failed to plan gala dinner:', error.message);
+        });
+    }
+
     return event;
+  }
+
+  /**
+   * Plan gala dinner via Restaurant node
+   */
+  async planGalaDinner(eventId: string, attendeeCount: number): Promise<any> {
+    const event = this.events.get(eventId);
+    if (!event) {
+      return { error: 'Event not found' };
+    }
+
+    const restaurantNodes = BaseNode.findNodesByType('ada.restaurant');
+    if (restaurantNodes.length === 0) {
+      console.log('No restaurant node available for gala dinner');
+      return { error: 'No restaurant node available' };
+    }
+
+    try {
+      // Schedule gala dinner for the evening of the last day
+      const galaDinnerTime = new Date(event.endDate);
+      galaDinnerTime.setHours(19, 0, 0, 0); // 7 PM
+
+      const result = await this.requestFromNode(
+        restaurantNodes[0].getIdentity().id,
+        'request-catering',
+        {
+          eventId: event.id,
+          eventName: event.name,
+          guestCount: attendeeCount,
+          mealType: 'dinner',
+          cuisine: ['Turkish', 'Mediterranean', 'International'],
+          dietaryRestrictions: ['vegetarian-option', 'vegan-option', 'halal'],
+          serviceTime: galaDinnerTime,
+          venue: event.venue.address,
+          budget: attendeeCount * 150, // $150 per person for gala dinner
+        }
+      );
+
+      this.remember('data', {
+        eventId,
+        galaDinner: result,
+      }, ['gala', 'catering', 'restaurant'], 8);
+
+      console.log(`✅ Gala dinner planned for event ${event.name}: ${attendeeCount} guests`);
+      return result;
+    } catch (error: any) {
+      console.error('Failed to plan gala dinner:', error.message);
+      return { error: error.message };
+    }
   }
 
   /**

@@ -135,6 +135,9 @@ export class SeaNode extends BaseNode {
     // Set up message handlers for marina communication
     this.setupMarinaHandlers();
 
+    // Set up cross-node collaboration
+    this.setupCrossNodeCollaboration();
+
     // Set up NMEA2000 data processing
     this.setupNMEAProcessing();
 
@@ -491,6 +494,151 @@ export class SeaNode extends BaseNode {
         },
       };
     });
+  }
+
+  /**
+   * Setup cross-node collaboration
+   * Enables yacht to work with Weather, Maintenance, Restaurant, and other nodes
+   */
+  private setupCrossNodeCollaboration(): void {
+    // Store connected node IDs for easy access
+    const connectedNodes = {
+      weather: [] as string[],
+      maintenance: [] as string[],
+      restaurant: [] as string[],
+      finance: [] as string[],
+    };
+
+    // Discover and connect to available nodes
+    this.discoverNodes(connectedNodes);
+  }
+
+  /**
+   * Discover available ecosystem nodes
+   */
+  private discoverNodes(connectedNodes: any): void {
+    // Find weather nodes
+    const weatherNodes = BaseNode.findNodesByType('ada.weather');
+    weatherNodes.forEach(node => {
+      connectedNodes.weather.push(node.getIdentity().id);
+      this.connectToNode(node.getIdentity().id);
+    });
+
+    // Find maintenance nodes
+    const maintenanceNodes = BaseNode.findNodesByType('ada.maintenance');
+    maintenanceNodes.forEach(node => {
+      connectedNodes.maintenance.push(node.getIdentity().id);
+      this.connectToNode(node.getIdentity().id);
+    });
+
+    // Find restaurant nodes
+    const restaurantNodes = BaseNode.findNodesByType('ada.restaurant');
+    restaurantNodes.forEach(node => {
+      connectedNodes.restaurant.push(node.getIdentity().id);
+      this.connectToNode(node.getIdentity().id);
+    });
+
+    // Find finance nodes
+    const financeNodes = BaseNode.findNodesByType('ada.finance');
+    financeNodes.forEach(node => {
+      connectedNodes.finance.push(node.getIdentity().id);
+      this.connectToNode(node.getIdentity().id);
+    });
+  }
+
+  /**
+   * Request route safety check from Weather node
+   */
+  async requestRouteSafetyCheck(destination: {
+    latitude: number;
+    longitude: number;
+    name: string;
+  }): Promise<any> {
+    const weatherNodes = BaseNode.findNodesByType('ada.weather');
+    if (weatherNodes.length === 0) {
+      return { error: 'No weather node available' };
+    }
+
+    // Get current position (simulated for demo)
+    const currentPosition = {
+      latitude: 41.0082,
+      longitude: 28.9784,
+      name: this.vessel.name,
+    };
+
+    const result = await this.requestFromNode(
+      weatherNodes[0].getIdentity().id,
+      'check-route-safety',
+      {
+        origin: currentPosition,
+        destination,
+        departureTime: new Date(),
+      }
+    );
+
+    this.remember('data', { routeSafetyCheck: result }, ['weather', 'route-planning'], 8);
+    return result;
+  }
+
+  /**
+   * Request emergency maintenance
+   */
+  async requestEmergencyMaintenance(issue: {
+    category: string;
+    description: string;
+    severity: 'low' | 'medium' | 'high' | 'critical';
+  }): Promise<any> {
+    const maintenanceNodes = BaseNode.findNodesByType('ada.maintenance');
+    if (maintenanceNodes.length === 0) {
+      return { error: 'No maintenance node available' };
+    }
+
+    const result = await this.requestFromNode(
+      maintenanceNodes[0].getIdentity().id,
+      'emergency-repair',
+      {
+        requesterId: this.identity.id,
+        requesterName: this.vessel.name,
+        category: issue.category,
+        description: issue.description,
+        priority: issue.severity === 'critical' ? 'critical' : 'high',
+      }
+    );
+
+    this.remember('data', { maintenanceRequest: result }, ['maintenance', 'emergency'], 9);
+    return result;
+  }
+
+  /**
+   * Request meal service from Restaurant node
+   */
+  async requestMealService(request: {
+    guestCount: number;
+    mealType: 'breakfast' | 'lunch' | 'dinner' | 'snack';
+    cuisine?: string[];
+    dietaryRestrictions?: string[];
+  }): Promise<any> {
+    const restaurantNodes = BaseNode.findNodesByType('ada.restaurant');
+    if (restaurantNodes.length === 0) {
+      return { error: 'No restaurant node available' };
+    }
+
+    const result = await this.requestFromNode(
+      restaurantNodes[0].getIdentity().id,
+      'request-catering',
+      {
+        yachtId: this.identity.id,
+        yachtName: this.vessel.name,
+        guestCount: request.guestCount,
+        mealType: request.mealType,
+        cuisine: request.cuisine || ['Mediterranean'],
+        dietaryRestrictions: request.dietaryRestrictions || [],
+        deliveryTime: new Date(Date.now() + 2 * 60 * 60 * 1000), // 2 hours from now
+      }
+    );
+
+    this.remember('data', { mealRequest: result }, ['restaurant', 'catering'], 7);
+    return result;
   }
 
   /**
