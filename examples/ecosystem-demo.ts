@@ -198,12 +198,22 @@ async function main() {
     console.log(`   - Itinerary steps: ${attendeeRegistration.itinerary.steps.length}`);
     console.log(`   - Apple Pass: ${attendeeRegistration.applePassUrl}`);
 
-    console.log('\n📋 Itinerary breakdown:');
+    console.log('\n📋 Itinerary breakdown (first 5 steps):');
     attendeeRegistration.itinerary.steps.slice(0, 5).forEach((step: any, index: number) => {
       console.log(`   ${index + 1}. ${step.type.toUpperCase()}: ${step.description}`);
       console.log(`      Time: ${step.scheduledTime.toLocaleString()}`);
+      if (step.details && Object.keys(step.details).length > 0) {
+        console.log(`      Details: ${JSON.stringify(step.details, null, 8).replace(/\n/g, '\n      ')}`);
+      }
     });
     console.log(`   ... and ${attendeeRegistration.itinerary.steps.length - 5} more steps`);
+
+    // Show Travel node bookings
+    console.log('\n🎫 Travel Bookings Created:');
+    const travelStatus = travelAgency.getStatus();
+    console.log(`   - Total bookings: ${travelStatus.totalBookings}`);
+    console.log(`   - Flight bookings: ${travelStatus.bookingsByType.flight || 0}`);
+    console.log(`   - Hotel bookings: ${travelStatus.bookingsByType.hotel || 0}`);
   }
 
   // ==========================================
