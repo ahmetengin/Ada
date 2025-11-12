@@ -10,6 +10,7 @@ import { BerthManagement } from './services/BerthManagement.js';
 import { ReservationService } from './services/ReservationService.js';
 import { ContractManagement } from './services/ContractManagement.js';
 import { EInvoiceIntegration } from './services/EInvoiceIntegration.js';
+import { FacilityManagement } from './services/FacilityManagement.js';
 
 export interface MarinaNodeConfig extends Omit<BaseNodeOptions, 'type' | 'capabilities'> {
   marinaInfo: {
@@ -29,6 +30,7 @@ export class MarinaNode extends BaseNode {
   private reservationService: ReservationService;
   private contractManagement: ContractManagement;
   private eInvoiceIntegration: EInvoiceIntegration;
+  private facilityManagement: FacilityManagement;
 
   constructor(config: MarinaNodeConfig) {
     super({
@@ -42,6 +44,8 @@ export class MarinaNode extends BaseNode {
           'e-invoice-integration',
           'yacht-communication',
           'service-coordination',
+          'facility-management',
+          'package-deals',
         ],
         services: [
           'berth-allocation',
@@ -52,11 +56,20 @@ export class MarinaNode extends BaseNode {
           'cleaning',
           'security',
           'customs',
+          'restaurant',
+          'spa-wellness',
+          'fitness',
+          'beach-club',
+          'conference',
+          'concierge',
         ],
         integrations: [
           'e-fatura',
           'ada.sea-nodes',
           'payment-systems',
+          'ada.restaurant',
+          'ada.maintenance',
+          'ada.customer',
         ],
       },
     });
@@ -68,6 +81,7 @@ export class MarinaNode extends BaseNode {
     this.reservationService = new ReservationService();
     this.contractManagement = new ContractManagement();
     this.eInvoiceIntegration = new EInvoiceIntegration();
+    this.facilityManagement = new FacilityManagement();
 
     this.initializeDefaultBerths();
     this.initializeDefaultServices();
@@ -121,6 +135,25 @@ export class MarinaNode extends BaseNode {
       case 'get-services':
         return this.reservationService.getAvailableServices();
 
+      // Facility management
+      case 'get-all-facilities':
+        return this.facilityManagement.getAllFacilities();
+
+      case 'get-facilities-by-category':
+        return this.facilityManagement.getFacilitiesByCategory(data.category);
+
+      case 'book-facility':
+        return this.facilityManagement.bookFacility(data);
+
+      case 'get-packages':
+        return this.facilityManagement.getAllPackages();
+
+      case 'get-popular-packages':
+        return this.facilityManagement.getPopularPackages();
+
+      case 'get-facility-stats':
+        return this.facilityManagement.getStatistics();
+
       default:
         throw new Error(`Unknown task type: ${type}`);
     }
@@ -130,6 +163,8 @@ export class MarinaNode extends BaseNode {
    * Get node status
    */
   getStatus(): Record<string, any> {
+    const facilityStats = this.facilityManagement.getStatistics();
+
     return {
       marina: this.marinaInfo,
       occupancy: this.berthManagement.getOccupancyRate(),
@@ -137,6 +172,13 @@ export class MarinaNode extends BaseNode {
       contracts: this.contractManagement.generateReport(),
       invoices: this.eInvoiceIntegration.generateReport(),
       revenue: this.berthManagement.getRevenueStats('monthly'),
+      facilities: {
+        total: facilityStats.totalFacilities,
+        operational: facilityStats.operationalFacilities,
+        averageRating: facilityStats.averageRating,
+        categories: facilityStats.byCategory,
+        topRated: facilityStats.popularFacilities,
+      },
     };
   }
 
@@ -565,5 +607,84 @@ export class MarinaNode extends BaseNode {
     if (updated > 0) {
       this.logEvent('Contracts updated', { expiredCount: updated });
     }
+  }
+
+  // ========================================
+  // FACILITY MANAGEMENT - Public Methods
+  // ========================================
+
+  /**
+   * Get all marina facilities
+   */
+  getAllFacilities() {
+    return this.facilityManagement.getAllFacilities();
+  }
+
+  /**
+   * Get facilities by category
+   */
+  getFacilitiesByCategory(category: string) {
+    return this.facilityManagement.getFacilitiesByCategory(category as any);
+  }
+
+  /**
+   * Book a facility
+   */
+  async bookFacility(data: {
+    facilityId: string;
+    customerId: string;
+    customerName: string;
+    date: Date;
+    timeSlot?: { start: string; end: string };
+    partySize?: number;
+    specialRequests?: string;
+  }) {
+    const reservation = this.facilityManagement.bookFacility(data);
+
+    // Track interaction in customer node
+    if ('error' in reservation) {
+      return reservation;
+    }
+
+    // Notify customer node
+    const customerNodes = BaseNode.findNodesByType('ada.customer');
+    if (customerNodes.length > 0) {
+      await this.requestFromNode(
+        customerNodes[0].getIdentity().id,
+        'track-interaction',
+        {
+          customerId: data.customerId,
+          nodeType: 'ada.marina',
+          type: 'service',
+          channel: 'system',
+          subject: `Facility booking: ${reservation.facilityName}`,
+          sentiment: 'positive',
+        }
+      );
+    }
+
+    this.remember('data', { facilityReservation: reservation }, ['facility', 'booking'], 7);
+    return reservation;
+  }
+
+  /**
+   * Get marina packages
+   */
+  getMarinaPackages() {
+    return this.facilityManagement.getAllPackages();
+  }
+
+  /**
+   * Get popular packages
+   */
+  getPopularPackages() {
+    return this.facilityManagement.getPopularPackages();
+  }
+
+  /**
+   * Get facility statistics
+   */
+  getFacilityStatistics() {
+    return this.facilityManagement.getStatistics();
   }
 }
