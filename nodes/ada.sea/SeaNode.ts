@@ -13,6 +13,7 @@ import { MenuPlanning } from './services/MenuPlanning.js';
 import { VoyagePlanning } from './services/VoyagePlanning.js';
 import { VHFRadioService } from './services/VHFRadioService.js';
 import { VHFMessageClassifier } from './services/VHFMessageClassifier.js';
+import { VHFRaceMode } from './services/VHFRaceMode.js';
 
 export interface SeaNodeConfig extends Omit<BaseNodeOptions, 'type' | 'capabilities'> {
   vessel: VesselData;
@@ -31,6 +32,7 @@ export class SeaNode extends BaseNode {
   private voyagePlanning: VoyagePlanning;
   private vhfRadioService: VHFRadioService;
   private vhfMessageClassifier: VHFMessageClassifier;
+  private vhfRaceMode?: VHFRaceMode;
 
   // State
   private currentVoyage?: VoyagePlan;
@@ -450,6 +452,11 @@ export class SeaNode extends BaseNode {
       // Classify the transmission
       const classification = this.vhfMessageClassifier.classify(transmission);
 
+      // Pass to race mode if active
+      if (this.vhfRaceMode && this.vhfRaceMode.isRaceModeActive()) {
+        this.vhfRaceMode.processTransmission(transmission);
+      }
+
       // Remember important transmissions
       if (classification.priority === 'urgent' || classification.priority === 'high') {
         this.remember('event', {
@@ -547,9 +554,205 @@ export class SeaNode extends BaseNode {
       case 'export-data':
         return this.vhfRadioService.exportData();
 
+      case 'activate-race-mode':
+        return this.activateRaceMode(params);
+
+      case 'deactivate-race-mode':
+        return this.deactivateRaceMode();
+
+      case 'get-race-events':
+        if (!this.vhfRaceMode) {
+          return { error: 'Race mode not active' };
+        }
+        return this.vhfRaceMode.getRaceEvents();
+
+      case 'get-race-summary':
+        if (!this.vhfRaceMode) {
+          return { error: 'Race mode not active' };
+        }
+        return this.vhfRaceMode.getRaceSummary();
+
       default:
         throw new Error(`Unknown VHF radio action: ${action}`);
     }
+  }
+
+  /**
+   * Activate race mode for VHF monitoring
+   */
+  private activateRaceMode(params: {
+    raceName: string;
+    committeeChannel?: number;
+    fleetChannel?: number;
+    startTime?: string;
+    courseMarks?: string[];
+  }): any {
+    this.vhfRaceMode = new VHFRaceMode({
+      raceName: params.raceName,
+      raceChannels: [6, 73, 72], // Standard race channels
+      committeeChannel: params.committeeChannel || 73,
+      fleetChannel: params.fleetChannel || 6,
+      startTime: params.startTime ? new Date(params.startTime) : undefined,
+      courseMarks: params.courseMarks,
+    });
+
+    // Setup race event handlers
+    this.setupRaceModeHandlers();
+
+    // Activate race mode
+    this.vhfRaceMode.activate();
+
+    // Set VHF scanner to race channels
+    this.vhfRadioService.setActiveChannels(this.vhfRaceMode.getRaceChannels());
+
+    this.remember('event', {
+      type: 'race-mode-activated',
+      raceName: params.raceName,
+    }, ['vhf', 'race'], 9);
+
+    return {
+      success: true,
+      message: 'Race mode activated',
+      channels: this.vhfRaceMode.getRaceChannels(),
+    };
+  }
+
+  /**
+   * Deactivate race mode
+   */
+  private deactivateRaceMode(): any {
+    if (!this.vhfRaceMode) {
+      return { error: 'Race mode not active' };
+    }
+
+    this.vhfRaceMode.deactivate();
+    this.vhfRaceMode = undefined;
+
+    // Reset to normal channel priority
+    const config = this.vhfRadioService.getStatistics();
+    // Back to geographic mode
+
+    return {
+      success: true,
+      message: 'Race mode deactivated',
+    };
+  }
+
+  /**
+   * Setup race mode event handlers
+   */
+  private setupRaceModeHandlers(): void {
+    if (!this.vhfRaceMode) {
+      return;
+    }
+
+    // Warning signal (5 minutes)
+    this.vhfRaceMode.on('race:warning_signal', (data) => {
+      this.remember('event', {
+        type: 'race-warning-signal',
+        class: data.class,
+        event: data.event,
+      }, ['vhf', 'race', 'start-sequence'], 9);
+
+      this.emit('race:warning', data);
+    });
+
+    // Preparatory signal (4 minutes)
+    this.vhfRaceMode.on('race:preparatory_signal', (data) => {
+      this.remember('event', {
+        type: 'race-preparatory-signal',
+        class: data.class,
+        event: data.event,
+      }, ['vhf', 'race', 'start-sequence'], 9);
+
+      this.emit('race:preparatory', data);
+    });
+
+    // One minute signal
+    this.vhfRaceMode.on('race:one_minute_signal', (data) => {
+      this.remember('event', {
+        type: 'race-one-minute-signal',
+        class: data.class,
+        event: data.event,
+      }, ['vhf', 'race', 'start-sequence'], 10);
+
+      this.emit('race:one_minute', data);
+    });
+
+    // START!
+    this.vhfRaceMode.on('race:start', (data) => {
+      this.remember('event', {
+        type: 'race-start',
+        class: data.class,
+        event: data.event,
+        sequence: data.sequence,
+      }, ['vhf', 'race', 'start'], 10);
+
+      this.emit('race:start', data);
+      this.emit('alert', {
+        severity: 'info',
+        source: 'vhf-race',
+        message: `Race start for ${data.class}!`,
+        data,
+      });
+    });
+
+    // General recall
+    this.vhfRaceMode.on('race:general_recall', (event) => {
+      this.remember('event', {
+        type: 'race-general-recall',
+        event,
+      }, ['vhf', 'race', 'recall'], 9);
+
+      this.emit('race:general_recall', event);
+      this.emit('alert', {
+        severity: 'warning',
+        source: 'vhf-race',
+        message: 'General Recall!',
+        data: event,
+      });
+    });
+
+    // Abandonment
+    this.vhfRaceMode.on('race:abandonment', (event) => {
+      this.remember('event', {
+        type: 'race-abandonment',
+        event,
+      }, ['vhf', 'race', 'abandonment'], 9);
+
+      this.emit('race:abandonment', event);
+      this.emit('alert', {
+        severity: 'warning',
+        source: 'vhf-race',
+        message: 'Race Abandoned',
+        data: event,
+      });
+    });
+
+    // Course change
+    this.vhfRaceMode.on('race:course_change', (event) => {
+      this.remember('event', {
+        type: 'race-course-change',
+        event,
+      }, ['vhf', 'race', 'course'], 8);
+
+      this.emit('race:course_change', event);
+    });
+
+    // Mark rounding
+    this.vhfRaceMode.on('race:mark_rounding', (event) => {
+      this.remember('event', {
+        type: 'race-mark-rounding',
+        event,
+      }, ['vhf', 'race', 'mark'], 7);
+
+      this.emit('race:mark_rounding', event);
+    });
+
+    // Fleet comms
+    this.vhfRaceMode.on('race:fleet_comms', (data) => {
+      this.emit('race:fleet_comms', data);
+    });
   }
 
   /**
