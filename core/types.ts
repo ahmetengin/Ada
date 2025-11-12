@@ -614,3 +614,101 @@ export interface AwayMode {
   }>;
   activatedAt?: Date;
 }
+
+// Aegean-Specific Types - Ada.Sea unique features
+export interface MeltemData {
+  currentStrength: number; // knots
+  trend: 'increasing' | 'decreasing' | 'steady';
+  peakTime: string; // "14:00-17:00"
+  forecast: Array<{
+    date: Date;
+    minStrength: number;
+    maxStrength: number;
+    peakTime: string;
+  }>;
+  safeAnchorages: Array<{
+    name: string;
+    distance: number; // nautical miles
+    shelter: 'excellent' | 'good' | 'moderate';
+  }>;
+  warnings: Array<{
+    severity: 'info' | 'warning' | 'critical';
+    message: string;
+  }>;
+  isActive: boolean; // Is Meltemi currently blowing?
+}
+
+export interface GreekIsland {
+  name: string;
+  nameGreek: string;
+  distance: number; // nautical miles
+  bearing: number; // degrees
+  facilities: {
+    fuel: boolean;
+    provisions: boolean;
+    medical: boolean;
+    marina: boolean;
+    customs: boolean;
+  };
+  customsHours?: {
+    open: string;
+    close: string;
+    weekendOpen: boolean;
+  };
+  harbors: Array<{
+    name: string;
+    vhfChannel?: number;
+    depth: number;
+    shelter: 'excellent' | 'good' | 'moderate' | 'poor';
+  }>;
+  emergencyServices: {
+    coastGuard: string; // phone number
+    medical: string;
+    police: string;
+  };
+}
+
+export interface TurkishMarina {
+  name: string;
+  vhfChannel: number;
+  location: {
+    latitude: number;
+    longitude: number;
+  };
+  distance?: number; // from current position
+  bearing?: number;
+  availability: 'available' | 'limited' | 'full' | 'unknown';
+  services: Array<'fuel' | 'water' | 'electricity' | 'pump-out' | 'wifi' | 'repair' | 'chandlery'>;
+  customsHours: {
+    open: string;
+    close: string;
+    weekendOpen: boolean;
+  };
+  depth: number; // meters
+  maxLOA: number; // meters
+  pricing: {
+    dailyRate: number;
+    currency: string;
+  };
+  contacts: {
+    vhf: number;
+    phone: string;
+    email?: string;
+  };
+}
+
+export interface AegeanHazard {
+  type: 'fishing-nets' | 'military-zone' | 'ferry-route' | 'restricted-area' | 'shallow-water' | 'rocks';
+  location: {
+    latitude: number;
+    longitude: number;
+  };
+  radius: number; // meters
+  distance?: number; // from current position
+  bearing?: number;
+  severity: 'info' | 'warning' | 'critical';
+  description: string;
+  descriptionTR: string;
+  activeTime?: string; // "08:00-18:00" for fishing nets
+  temporaryUntil?: Date; // for military exercises
+}
