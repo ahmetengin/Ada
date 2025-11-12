@@ -199,6 +199,25 @@
 
         <PrimaryNavigationDisplay />
 
+        <!-- Aegean-Specific Widgets -->
+        <div class="aegean-section">
+          <div class="section-title">
+            <h3>🌊 Aegean Intelligence</h3>
+            <p>Smart features designed for the Aegean Sea</p>
+          </div>
+          <div class="aegean-widgets-grid">
+            <MeltemWidget :apiUrl="API_URL" />
+            <GreekIslandsWidget
+              :apiUrl="API_URL"
+              :currentPosition="{ latitude: 37.0, longitude: 27.5 }"
+            />
+            <TurkishMarinaWidget
+              :apiUrl="API_URL"
+              :currentPosition="{ latitude: 37.0, longitude: 27.5 }"
+            />
+          </div>
+        </div>
+
         <div class="observer-features-grid">
           <div class="feature-card">
             <div class="feature-icon">⚓</div>
@@ -243,6 +262,9 @@ import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import { formatDistanceToNow, format } from 'date-fns';
 import VHFMonitor from './components/VHFMonitor.vue';
 import PrimaryNavigationDisplay from './components/PrimaryNavigationDisplay.vue';
+import MeltemWidget from './components/MeltemWidget.vue';
+import GreekIslandsWidget from './components/GreekIslandsWidget.vue';
+import TurkishMarinaWidget from './components/TurkishMarinaWidget.vue';
 
 // API Configuration
 const API_URL = 'http://localhost:8765';
@@ -1068,5 +1090,48 @@ onMounted(() => {
 .feature-btn:hover {
   background: rgba(96, 165, 250, 0.2);
   transform: scale(1.05);
+}
+
+/* Aegean Section */
+.aegean-section {
+  margin: 3rem 0;
+  padding: 2rem;
+  background: linear-gradient(135deg, rgba(30, 58, 138, 0.1) 0%, rgba(29, 78, 216, 0.05) 100%);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: 16px;
+}
+
+.section-title {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.section-title h3 {
+  color: #60a5fa;
+  font-size: 1.75rem;
+  margin-bottom: 0.5rem;
+  font-weight: 700;
+}
+
+.section-title p {
+  color: #93c5fd;
+  font-size: 1rem;
+  font-weight: 400;
+}
+
+.aegean-widgets-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+  gap: 2rem;
+}
+
+@media (max-width: 768px) {
+  .aegean-widgets-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .aegean-section {
+    padding: 1rem;
+  }
 }
 </style>
