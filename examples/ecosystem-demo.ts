@@ -7,6 +7,7 @@ import { SeaNode } from '../nodes/ada.sea/SeaNode.js';
 import { MarinaNode } from '../nodes/ada.marina/MarinaNode.js';
 import { TravelNode } from '../nodes/ada.travel/TravelNode.js';
 import { CongressNode } from '../nodes/ada.congress/CongressNode.js';
+import { FinanceNode } from '../nodes/ada.finance/FinanceNode.js';
 import { BaseNode } from '../core/BaseNode.js';
 
 async function main() {
@@ -88,7 +89,74 @@ async function main() {
   console.log(`   - Services: ${reservationRequest.berth.amenities.join(', ')}`);
 
   // ==========================================
-  // 4. Create Travel Agency Node
+  // 4. Create Finance Node (Accounting & Tax)
+  // ==========================================
+  console.log('\n💰 Creating Finance Node...');
+
+  const finance = new FinanceNode({
+    name: 'Ada Finance & Accounting',
+    companyInfo: {
+      name: 'Ada Maritime Services Ltd.',
+      taxId: '1234567890', // VKN
+      taxOffice: 'Beşiktaş Vergi Dairesi',
+      currency: 'TRY',
+    },
+    // Paraşüt config would go here in production
+    // parasut: { clientId: '...', clientSecret: '...', ... }
+  });
+
+  await finance.start();
+  console.log(`✅ Finance node created: ${finance.getIdentity().id}`);
+  console.log(`   - Company: ${finance.getStatus().company.name}`);
+  console.log(`   - Tax ID: ${finance.getStatus().company.taxId}`);
+  console.log(`   - Currency: ${finance.getStatus().currency}`);
+
+  // Connect Marina to Finance
+  marina.connectToNode(finance.getIdentity().id);
+  finance.connectToNode(marina.getIdentity().id);
+  console.log('🔗 Marina and Finance nodes connected');
+
+  // ==========================================
+  // 5. Marina Creates Invoice for Berth (via Finance)
+  // ==========================================
+  console.log('\n📄 Marina requesting invoice from Finance...');
+
+  const invoiceResponse = await marina.requestFromNode(
+    finance.getIdentity().id,
+    'create-invoice',
+    {
+      customerId: yacht.getIdentity().id,
+      customerName: 'S/Y Azure Dream',
+      customerEmail: 'captain@azuredream.com',
+      customerTaxId: '9876543210',
+      customerTaxOffice: 'Kadıköy Vergi Dairesi',
+      items: [
+        {
+          description: `Berth Rental - ${reservationRequest.berth.number} (7 days)`,
+          quantity: 7,
+          unitPrice: 100, // $100 per day
+          vatRate: 20, // %20 KDV
+        },
+      ],
+      withholdingRate: 0, // No withholding for berth rental
+      dueInDays: 7,
+      sendToParasut: false, // Don't send to Paraşüt in demo
+    }
+  );
+
+  if (invoiceResponse.success) {
+    const invoice = invoiceResponse.invoice;
+    console.log('✅ Invoice created:');
+    console.log(`   - Invoice Number: ${invoice.invoiceNumber}`);
+    console.log(`   - Subtotal (KDV hariç): ${invoice.subtotal} ${invoice.currency}`);
+    console.log(`   - KDV (%${invoice.items[0].vatRate}): ${invoice.vatAmount} ${invoice.currency}`);
+    console.log(`   - Total (KDV dahil): ${invoice.amount} ${invoice.currency}`);
+    console.log(`   - Net Amount: ${invoice.netAmount} ${invoice.currency}`);
+    console.log(`   - Due Date: ${invoice.dueDate.toLocaleDateString()}`);
+  }
+
+  // ==========================================
+  // 6. Create Travel Agency Node
   // ==========================================
   console.log('\n✈️  Creating Travel Agency Node...');
 
