@@ -380,7 +380,7 @@ export interface VHFAlert {
   transmission?: VHFTransmission;
 }
 
-// Ada Observer Types - Zora-style intelligent monitoring
+// Ada Observer Types - Intelligent vessel monitoring
 export type VesselState =
   | 'pre-departure'
   | 'at-anchor'

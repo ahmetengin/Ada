@@ -194,7 +194,7 @@
       <div v-show="activeTab === 'observer'" class="tab-content">
         <div class="observer-header">
           <h2>🧭 Ada Observer - Intelligent Yacht Monitoring</h2>
-          <p class="observer-subtitle">Zora-style vessel state intelligence and navigation</p>
+          <p class="observer-subtitle">Advanced vessel state intelligence and navigation</p>
         </div>
 
         <PrimaryNavigationDisplay />

@@ -1,5 +1,5 @@
 /**
- * Ada Observer - Zora-style intelligent yacht monitoring
+ * Ada Observer - Intelligent yacht monitoring system
  * Provides vessel state intelligence, automatic logging, and smart monitoring
  */
 
@@ -98,7 +98,7 @@ export class AdaObserver extends EventEmitter {
   }
 
   /**
-   * Intelligent vessel state detection (like Zora)
+   * Intelligent vessel state detection
    */
   private detectVesselState(): VesselStateContext {
     const now = new Date();
@@ -235,7 +235,7 @@ export class AdaObserver extends EventEmitter {
   }
 
   /**
-   * Smart Anchor Watch - Like Zora's intelligent anchor alarm
+   * Smart Anchor Watch - Intelligent anchor alarm with drag detection
    */
   startAnchorWatch(config: {
     chainLength: number;
