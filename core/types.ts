@@ -379,3 +379,238 @@ export interface VHFAlert {
   requiresAction: boolean;
   transmission?: VHFTransmission;
 }
+
+// Ada Observer Types - Zora-style intelligent monitoring
+export type VesselState =
+  | 'pre-departure'
+  | 'at-anchor'
+  | 'anchored'
+  | 'anchoring'
+  | 'underway-sailing'
+  | 'underway-motoring'
+  | 'underway-motorsailing'
+  | 'drifting'
+  | 'docking'
+  | 'docked'
+  | 'moored'
+  | 'engine-room-check'
+  | 'off-season'
+  | 'maintenance'
+  | 'unknown';
+
+export interface VesselStateContext {
+  state: VesselState;
+  timestamp: Date;
+  position?: {
+    latitude: number;
+    longitude: number;
+  };
+  speed?: {
+    sog: number; // Speed over ground (knots)
+    stw: number; // Speed through water (knots)
+  };
+  heading?: {
+    magnetic: number;
+    true: number;
+  };
+  wind?: {
+    apparentSpeed: number;
+    apparentAngle: number;
+    trueSpeed: number;
+    trueAngle: number;
+  };
+  depth?: number;
+  engineRunning?: boolean;
+  sailsUp?: boolean;
+  anchorDown?: boolean;
+  confidence: number; // 0-100
+}
+
+export interface PrimaryNavigationData {
+  heading: {
+    magnetic: number;
+    true: number;
+  };
+  wind: {
+    apparentSpeed: number; // knots
+    apparentAngle: number; // degrees
+    trueSpeed: number;
+    trueAngle: number;
+  };
+  depth: number; // meters
+  speed: {
+    throughWater: number; // knots
+    overGround: number; // knots
+  };
+  position: {
+    latitude: number;
+    longitude: number;
+  };
+  autopilot?: {
+    active: boolean;
+    targetHeading?: number;
+    targetWindAngle?: number;
+  };
+  timestamp: Date;
+}
+
+export interface SmartAnchorWatch {
+  id: string;
+  active: boolean;
+  anchorPosition: {
+    latitude: number;
+    longitude: number;
+  };
+  anchorSetTime: Date;
+  chainLength: number; // meters
+  waterDepth: number; // meters
+  bowRollerHeight: number; // meters from waterline
+  scope: number; // calculated scope ratio
+  swingRadius: number; // meters
+  currentPosition: {
+    latitude: number;
+    longitude: number;
+  };
+  distanceFromAnchor: number; // meters
+  isDragging: boolean;
+  tideInfo?: {
+    currentHeight: number;
+    nextHigh: Date;
+    nextLow: Date;
+    range: number; // meters
+  };
+  alerts: AnchorAlert[];
+}
+
+export interface AnchorAlert {
+  id: string;
+  type: 'drag' | 'swing-limit' | 'wind-gust' | 'tide-change' | 'depth-change';
+  severity: 'info' | 'warning' | 'critical';
+  message: string;
+  timestamp: Date;
+  acknowledged: boolean;
+}
+
+export interface AutomaticLogEntry {
+  id: string;
+  timestamp: Date;
+  type: 'sail-change' | 'anchor' | 'departure' | 'arrival' | 'engine' | 'weather' | 'manual' | 'voice' | 'photo';
+  vesselState: VesselState;
+  position: {
+    latitude: number;
+    longitude: number;
+  };
+  weather?: {
+    windSpeed: number;
+    windDirection: number;
+    seaState: string;
+    visibility: string;
+  };
+  notes?: string;
+  voiceTranscription?: string;
+  photos?: string[]; // URLs or paths
+  sailConfiguration?: {
+    main: boolean;
+    genoa: boolean;
+    jib: boolean;
+    spinnaker: boolean;
+    reefs: number;
+  };
+  engineHours?: number;
+  fuelConsumed?: number;
+  distance?: number; // nautical miles
+}
+
+export interface VoyageJourney {
+  id: string;
+  startTime: Date;
+  endTime?: Date;
+  startPosition: {
+    latitude: number;
+    longitude: number;
+    locationName?: string;
+  };
+  endPosition?: {
+    latitude: number;
+    longitude: number;
+    locationName?: string;
+  };
+  route: Array<{
+    latitude: number;
+    longitude: number;
+    timestamp: Date;
+  }>;
+  distance: number; // nautical miles
+  maxSpeed: number;
+  avgSpeed: number;
+  vesselStates: VesselState[];
+  logEntries: AutomaticLogEntry[];
+  weatherConditions: any[];
+}
+
+export interface MaintenanceTask {
+  id: string;
+  title: string;
+  description: string;
+  category: 'engine' | 'electrical' | 'plumbing' | 'sails' | 'rigging' | 'hull' | 'electronics' | 'safety' | 'other';
+  status: 'idea' | 'todo' | 'in-progress' | 'completed';
+  priority: 'low' | 'medium' | 'high' | 'urgent';
+  assignedTo?: string;
+  systemId?: string; // Reference to specific system
+  scheduledDate?: Date;
+  completedDate?: Date;
+  estimatedCost?: number;
+  actualCost?: number;
+  receipts?: string[]; // File paths or URLs
+  notes?: string;
+  logEntries?: string[]; // References to log entries
+  recurrence?: {
+    type: 'hours' | 'days' | 'months' | 'years';
+    interval: number;
+    lastCompleted?: Date;
+    nextDue?: Date;
+  };
+}
+
+export interface SystemMonitoring {
+  systemId: string;
+  systemName: string;
+  category: 'engine' | 'electrical' | 'plumbing' | 'navigation' | 'communication' | 'safety';
+  status: 'normal' | 'warning' | 'critical' | 'offline';
+  metrics: Array<{
+    name: string;
+    value: number;
+    unit: string;
+    normalRange: { min: number; max: number };
+    timestamp: Date;
+  }>;
+  alerts: Array<{
+    id: string;
+    severity: 'info' | 'warning' | 'critical';
+    message: string;
+    timestamp: Date;
+  }>;
+  lastMaintenance?: Date;
+  nextMaintenanceDue?: Date;
+}
+
+export interface AwayMode {
+  enabled: boolean;
+  userId: string;
+  notificationPreferences: {
+    email: boolean;
+    sms: boolean;
+    push: boolean;
+  };
+  contacts: Array<{
+    name: string;
+    email?: string;
+    phone?: string;
+  }>;
+  alerts: Array<{
+    type: 'anchor-drag' | 'wind-speed' | 'depth' | 'battery' | 'intrusion' | 'system-fault';
+    threshold: number;
+    enabled: boolean;
+  }>;
+  activatedAt?: Date;
+}
