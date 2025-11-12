@@ -6,21 +6,33 @@
 
 ### SEAL (Self-Evolving Agent Loop)
 
-Ada implements a comprehensive **SEAL system** for autonomous agent learning and evolution:
+Ada implements a comprehensive **SEAL system** for autonomous agent learning and evolution with advanced AI capabilities:
 
+#### Core Features
 - **Experience Tracking** - Automatically records agent actions, decisions, and outcomes
-- **Reflection System** - Analyzes experiences to extract insights and patterns
+- **LLM-Powered Reflection** - Uses Claude AI to analyze experiences and extract deep insights
+- **Vector Embeddings** - Semantic understanding through sentence transformers
 - **Memory Formation** - Creates durable knowledge from learned patterns
+- **Semantic Search** - Qdrant-powered similarity search for context-aware memory retrieval
 - **Self-Evolution** - Continuous improvement through iterative learning cycles
 - **Performance Tracking** - Monitors agent effectiveness and success rates
-- **Adaptive Learning** - Adjusts behavior based on feedback and outcomes
+- **Skill Learning** - Automatically identifies and tracks acquired skills
+
+#### Advanced Capabilities
+1. **Intelligent Analysis** - Claude AI analyzes patterns, identifies insights, and suggests improvements
+2. **Semantic Memory** - Vector embeddings enable context-aware memory retrieval
+3. **Pattern Recognition** - Detects success patterns, error patterns, and behavioral patterns
+4. **Skill Extraction** - Automatically identifies skills learned from experiences
+5. **Adaptive Learning** - Adjusts behavior based on feedback and outcomes
+6. **Fallback Mechanism** - Graceful degradation when LLM/embeddings are unavailable
 
 The SEAL loop enables agents to:
-1. **Learn from experience** - Every action is recorded and analyzed
-2. **Identify patterns** - Successful strategies and error patterns are detected
-3. **Build knowledge** - Insights are stored as reusable memories
-4. **Improve over time** - Performance increases with each learning cycle
-5. **Adapt to context** - Memories are retrieved based on relevance
+1. **Learn from experience** - Every action is recorded with rich context and reasoning
+2. **Understand semantically** - Vector embeddings capture meaning beyond keywords
+3. **Identify patterns** - LLM analyzes experiences to find deep patterns
+4. **Build knowledge** - Insights are stored as searchable memories
+5. **Improve intelligently** - Performance increases through AI-guided evolution
+6. **Retrieve contextually** - Semantic search finds relevant knowledge for any situation
 
 ### Tenant-Scoped Unique ID System
 
@@ -138,46 +150,63 @@ from ada.services import SEALManager
 from ada.database import get_db
 
 async with get_db() as session:
-    manager = SEALManager(session)
+    # Initialize with all advanced features
+    manager = SEALManager(
+        session,
+        use_embeddings=True,  # Enable semantic search
+        use_llm_reflection=True  # Enable Claude AI analysis
+    )
 
-    # Create a SEAL agent
+    # Create an intelligent SEAL agent
     agent = await manager.create_agent(
         tenant_id=tenant_id,
         name="Maritime Assistant",
         agent_type="specialist",
         capabilities=["route_planning", "weather_analysis"],
+        specializations=["navigation", "optimization"],
         seal_enabled=True,
-        reflection_frequency=5  # Reflect every 5 experiences
+        reflection_frequency=5
     )
 
-    # Record an experience
+    # Record rich experiences with context and reasoning
     experience = await manager.record_experience(
         agent_id=agent.id,
         tenant_id=tenant_id,
         experience_type="task_execution",
-        task_name="route_planning",
-        action_taken="Calculated optimal route considering weather",
+        task_name="route_optimization",
+        action_taken="Optimized route from Athens to Mykonos",
+        reasoning=(
+            "Analyzed weather patterns and sea conditions. "
+            "Calculated fuel-efficient speed profile."
+        ),
+        outcome="Route completed 25% faster with 15% less fuel",
         success=True,
-        performance_score=0.9,
-        reasoning="Analyzed wind patterns to minimize travel time"
+        performance_score=0.95
     )
 
-    # Trigger reflection to create memories
+    # LLM-powered reflection analyzes patterns and extracts insights
     memories = await manager.trigger_reflection(agent.id)
+    # Memories include: patterns, insights, skills, improvements
 
     # Run evolution cycle
     results = await manager.evolve_agent(agent.id)
     print(f"Success rate: {results['success_rate']:.2%}")
+    print(f"Skills learned: {results['agent']['skills_learned']}")
 
-    # Retrieve relevant memories for context
+    # Semantic search retrieves contextually relevant memories
     relevant_memories = await manager.retrieve_relevant_memories(
         agent_id=agent.id,
-        context="route planning in bad weather",
-        limit=5
+        context="How to handle route planning in stormy weather?",
+        limit=5,
+        score_threshold=0.7  # Minimum semantic similarity
     )
+    # Returns memories ranked by semantic relevance
 
-    # Get comprehensive insights
+    # Get comprehensive learning insights
     insights = await manager.get_agent_insights(agent.id)
+    print(f"Total experiences: {insights['statistics']['total_tasks']}")
+    print(f"Memories created: {insights['statistics']['memory_count']}")
+    print(f"Skills acquired: {insights['agent']['skills_learned']}")
 ```
 
 ### Creating Tenants and Fleets
@@ -249,14 +278,17 @@ async with get_db() as session:
 ### Running the Examples
 
 ```bash
-# Run SEAL example
+# Basic SEAL example
 uv run python examples/seal_example.py
 
-# Run cloning example
+# Advanced SEAL with embeddings and LLM
+uv run python examples/seal_advanced_example.py
+
+# Cloning example
 uv run python examples/cloning_example.py
 ```
 
-**SEAL Example demonstrates:**
+**Basic SEAL Example demonstrates:**
 - Creating SEAL agents with learning capabilities
 - Recording experiences (successes and errors)
 - Automatic and manual reflection triggering
@@ -264,6 +296,15 @@ uv run python examples/cloning_example.py
 - Evolution cycles for continuous improvement
 - Performance tracking and insights
 - Memory retrieval and feedback
+
+**Advanced SEAL Example demonstrates:**
+- LLM-powered intelligent reflection with Claude AI
+- Vector embeddings for semantic understanding
+- Context-aware semantic memory retrieval
+- Rich experience tracking with reasoning
+- Automatic skill identification and tracking
+- Pattern recognition and insight extraction
+- Graceful fallback mechanisms
 
 **Cloning Example demonstrates:**
 - Creating tenants, fleets, and users
@@ -308,7 +349,9 @@ Ada/
 │   │   ├── session.py           # Session management
 │   │   └── clients.py           # Redis, Qdrant, Neo4j, FAISS
 │   ├── services/                 # Business logic
-│   │   └── seal_manager.py      # SEAL orchestration
+│   │   ├── seal_manager.py      # SEAL orchestration
+│   │   ├── embeddings.py        # Vector embeddings service
+│   │   └── llm_reflection.py    # LLM-powered reflection
 │   ├── utils/                    # Utilities
 │   │   ├── tenant_id_generator.py  # Unique ID generation
 │   │   └── cloning.py           # Cloning utilities
@@ -316,7 +359,8 @@ Ada/
 │   │   └── seal.py              # SEAL API endpoints
 │   └── schemas/                  # Pydantic schemas (TODO)
 ├── examples/                     # Usage examples
-│   ├── seal_example.py          # SEAL demonstration
+│   ├── seal_example.py          # Basic SEAL demonstration
+│   ├── seal_advanced_example.py # Advanced SEAL with AI
 │   └── cloning_example.py       # Cloning demonstration
 ├── tests/                        # Test suite
 │   ├── test_seal.py             # SEAL tests
@@ -444,27 +488,34 @@ See [observability/README.md](observability/README.md) for full documentation.
 ## 🚧 Roadmap
 
 ### Completed ✅
-- [x] SEAL (Self-Evolving Agent Loop) implementation
-- [x] SEAL API endpoints
-- [x] Experience tracking and memory formation
+- [x] SEAL (Self-Evolving Agent Loop) core implementation
+- [x] **Vector embeddings with Qdrant** - Semantic memory search
+- [x] **LLM-powered reflection with Claude AI** - Intelligent pattern analysis
+- [x] **Semantic memory retrieval** - Context-aware knowledge access
+- [x] Experience tracking with rich context
+- [x] Memory formation and skill learning
 - [x] Reflection and evolution cycles
+- [x] SEAL API endpoints
 - [x] Multi-tenant architecture
 - [x] Tenant-scoped cloning system
+- [x] Advanced examples and documentation
 
 ### In Progress 🚧
-- [ ] Enhanced SEAL with vector embeddings (Qdrant/FAISS)
-- [ ] LLM integration for intelligent reflection
+- [ ] Sentence transformers integration optimization
 - [ ] API endpoints for tenants, fleets, users
 - [ ] Authentication & authorization
+- [ ] Alembic database migrations
 
 ### Planned 📋
-- [ ] RAG implementation for agent knowledge
-- [ ] Graph queries with Neo4j for relationships
+- [ ] RAG implementation for enhanced agent knowledge
+- [ ] Graph queries with Neo4j for relationship mapping
 - [ ] Real-time agent monitoring with WebSockets
-- [ ] Advanced skill learning and transfer
-- [ ] Multi-agent collaboration
-- [ ] Docker Compose setup
-- [ ] Alembic migrations
+- [ ] Advanced skill transfer between agents
+- [ ] Multi-agent collaboration and coordination
+- [ ] FAISS integration for fast local search
+- [ ] Batch embedding generation for performance
+- [ ] Memory consolidation and pruning strategies
+- [ ] Docker Compose for local development
 - [ ] Comprehensive API documentation
 - [ ] Production deployment guide
 
