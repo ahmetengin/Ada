@@ -12,7 +12,8 @@ export type NodeType =
   | 'ada.maintenance'
   | 'ada.weather'
   | 'ada.legal'
-  | 'ada.restaurant';
+  | 'ada.restaurant'
+  | 'ada.customer';
 
 export interface NodeIdentity {
   id: string;
