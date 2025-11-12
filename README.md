@@ -503,6 +503,102 @@ Index("ix_users_tenant_email", "tenant_id", "email", unique=True)
 5. **Create** new entity in database
 6. **Handle** relationships (optional)
 
+## 🌊 Ada Node Ecosystem (TypeScript)
+
+Ada implements a **self-replicating node ecosystem** where specialized nodes collaborate to provide comprehensive maritime services:
+
+### Available Nodes
+
+| Node | Domain | Capabilities | Collaborates With |
+|------|--------|--------------|-------------------|
+| **ada.sea** | Yacht Management | NMEA2000, VHF radio, navigation, crew management | Marina, Travel, Weather, Maintenance |
+| **ada.marina** | Marina Operations | Berth management, reservations, marina services | Sea, Finance |
+| **ada.travel** | Travel Services | Flight booking, hotel reservations, tour packages | Congress, Finance |
+| **ada.congress** | Event Management | Conference organization, attendee management, itinerary | Travel, Finance |
+| **ada.finance** | Financial Management | Payments, invoicing, accounting, tax | All nodes |
+| **ada.maintenance** | Maintenance & Repair | Yacht/marina maintenance, technician dispatch, parts | Sea, Marina, Finance |
+| **ada.weather** | Weather & Safety | Forecasting, route safety analysis, storm warnings | Sea, Marina |
+
+### Node Collaboration Examples
+
+**Complete Journey Example** (Congress → Travel):
+```typescript
+// Congress asks Travel to book flights and hotels
+Congress → Travel: "Book SEA→IST flight for attendee"
+Travel → Congress: "Booked TK7244, PNR: ABC123, $800"
+
+Congress → Travel: "Reserve hotel for 4 nights"
+Travel → Congress: "Reserved, Confirmation: HTL123, $600"
+```
+
+**Marina Check-in** (Yacht → Marina → Finance):
+```typescript
+Yacht → Marina: "Request berth reservation"
+Marina → Yacht: "Berth A10 assigned, $700"
+Marina → Finance: "Create invoice for Yacht XYZ, $700"
+Finance → Marina: "Invoice INV-1001 created"
+```
+
+**Emergency Repair** (Yacht → Maintenance → Finance):
+```typescript
+Yacht → Maintenance: "Emergency: Engine failure"
+Maintenance → Yacht: "Technician dispatched, ETA 30min"
+Maintenance → Finance: "Record repair expense $1,200"
+```
+
+**Route Planning** (Yacht → Weather):
+```typescript
+Yacht → Weather: "Check route safety: Istanbul → Bodrum"
+Weather → Yacht: "Safety: CAUTION - 25kt winds expected, delay 6 hours"
+```
+
+### Node Architecture
+
+Each node inherits from `BaseNode` and provides:
+
+```typescript
+class YourNode extends BaseNode {
+  constructor(config) {
+    super({
+      type: 'ada.{domain}',
+      capabilities: {
+        skills: ['skill1', 'skill2'],      // What it can do
+        services: ['service1', 'service2'], // What it provides
+        integrations: ['node1', 'node2']    // Who it works with
+      }
+    });
+  }
+
+  // Handle requests from other nodes
+  setupHandlers() {
+    this.communication.onMessage('request-type', async (message) => {
+      // Process and respond
+      return { success: true, data: result };
+    });
+  }
+}
+```
+
+### Running the Ecosystem Demo
+
+```bash
+cd /home/user/Ada
+npm install
+npm run build
+npm run dev
+```
+
+The demo showcases:
+- ✅ Node creation and initialization
+- ✅ Inter-node communication
+- ✅ Real-world collaboration (flights, hotels, berths)
+- ✅ Node self-replication (cloning)
+- ✅ Financial transactions
+- ✅ Maintenance scheduling
+- ✅ Weather-based route safety
+
+See [examples/ecosystem-demo.ts](examples/ecosystem-demo.ts) for the full demo.
+
 ## 📊 Multi-Agent Observability
 
 The observability system provides comprehensive monitoring of Ada's multi-agent ecosystem:

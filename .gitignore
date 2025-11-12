@@ -80,3 +80,4 @@ temp/
 
 # Alembic
 alembic/versions/*.pyc
+node_modules

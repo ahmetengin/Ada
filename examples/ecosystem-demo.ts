@@ -7,6 +7,7 @@ import { SeaNode } from '../nodes/ada.sea/SeaNode.js';
 import { MarinaNode } from '../nodes/ada.marina/MarinaNode.js';
 import { TravelNode } from '../nodes/ada.travel/TravelNode.js';
 import { CongressNode } from '../nodes/ada.congress/CongressNode.js';
+import { FinanceNode } from '../nodes/ada.finance/FinanceNode.js';
 import { BaseNode } from '../core/BaseNode.js';
 
 async function main() {
@@ -88,7 +89,74 @@ async function main() {
   console.log(`   - Services: ${reservationRequest.berth.amenities.join(', ')}`);
 
   // ==========================================
-  // 4. Create Travel Agency Node
+  // 4. Create Finance Node (Accounting & Tax)
+  // ==========================================
+  console.log('\n💰 Creating Finance Node...');
+
+  const finance = new FinanceNode({
+    name: 'Ada Finance & Accounting',
+    companyInfo: {
+      name: 'Ada Maritime Services Ltd.',
+      taxId: '1234567890', // VKN
+      taxOffice: 'Beşiktaş Vergi Dairesi',
+      currency: 'TRY',
+    },
+    // Paraşüt config would go here in production
+    // parasut: { clientId: '...', clientSecret: '...', ... }
+  });
+
+  await finance.start();
+  console.log(`✅ Finance node created: ${finance.getIdentity().id}`);
+  console.log(`   - Company: ${finance.getStatus().company.name}`);
+  console.log(`   - Tax ID: ${finance.getStatus().company.taxId}`);
+  console.log(`   - Currency: ${finance.getStatus().currency}`);
+
+  // Connect Marina to Finance
+  marina.connectToNode(finance.getIdentity().id);
+  finance.connectToNode(marina.getIdentity().id);
+  console.log('🔗 Marina and Finance nodes connected');
+
+  // ==========================================
+  // 5. Marina Creates Invoice for Berth (via Finance)
+  // ==========================================
+  console.log('\n📄 Marina requesting invoice from Finance...');
+
+  const invoiceResponse = await marina.requestFromNode(
+    finance.getIdentity().id,
+    'create-invoice',
+    {
+      customerId: yacht.getIdentity().id,
+      customerName: 'S/Y Azure Dream',
+      customerEmail: 'captain@azuredream.com',
+      customerTaxId: '9876543210',
+      customerTaxOffice: 'Kadıköy Vergi Dairesi',
+      items: [
+        {
+          description: `Berth Rental - ${reservationRequest.berth.number} (7 days)`,
+          quantity: 7,
+          unitPrice: 100, // $100 per day
+          vatRate: 20, // %20 KDV
+        },
+      ],
+      withholdingRate: 0, // No withholding for berth rental
+      dueInDays: 7,
+      sendToParasut: false, // Don't send to Paraşüt in demo
+    }
+  );
+
+  if (invoiceResponse.success) {
+    const invoice = invoiceResponse.invoice;
+    console.log('✅ Invoice created:');
+    console.log(`   - Invoice Number: ${invoice.invoiceNumber}`);
+    console.log(`   - Subtotal (KDV hariç): ${invoice.subtotal} ${invoice.currency}`);
+    console.log(`   - KDV (%${invoice.items[0].vatRate}): ${invoice.vatAmount} ${invoice.currency}`);
+    console.log(`   - Total (KDV dahil): ${invoice.amount} ${invoice.currency}`);
+    console.log(`   - Net Amount: ${invoice.netAmount} ${invoice.currency}`);
+    console.log(`   - Due Date: ${invoice.dueDate.toLocaleDateString()}`);
+  }
+
+  // ==========================================
+  // 6. Create Travel Agency Node
   // ==========================================
   console.log('\n✈️  Creating Travel Agency Node...');
 
@@ -131,7 +199,7 @@ async function main() {
   // ==========================================
   console.log('\n📅 Creating International Maritime Congress...');
 
-  const event = congress.processTask({
+  const event = await congress.processTask({
     type: 'create-event',
     data: {
       name: 'International Maritime Technology Congress 2025',
@@ -156,6 +224,9 @@ async function main() {
   console.log(`   - Date: ${event.startDate.toLocaleDateString()} - ${event.endDate.toLocaleDateString()}`);
   console.log(`   - Venue: ${event.venue.name}`);
   console.log(`   - Expected attendees: ${event.expectedAttendees}`);
+
+  // Open registration (manually update event status for demo)
+  event.status = 'registration-open';
 
   // ==========================================
   // 7. Register Attendee with Complete Journey
@@ -185,19 +256,33 @@ async function main() {
     },
   });
 
-  console.log('✅ Attendee registered:');
-  console.log(`   - Registration ID: ${attendeeRegistration.registration.id}`);
-  console.log(`   - Package: ${attendeeRegistration.registration.packageType}`);
-  console.log(`   - Amount: $${attendeeRegistration.registration.amount}`);
-  console.log(`   - Itinerary steps: ${attendeeRegistration.itinerary.steps.length}`);
-  console.log(`   - Apple Pass: ${attendeeRegistration.applePassUrl}`);
+  if (!attendeeRegistration.success) {
+    console.log(`❌ Registration failed: ${attendeeRegistration.message}`);
+  } else {
+    console.log('✅ Attendee registered:');
+    console.log(`   - Registration ID: ${attendeeRegistration.registration.id}`);
+    console.log(`   - Package: ${attendeeRegistration.registration.packageType}`);
+    console.log(`   - Amount: $${attendeeRegistration.registration.amount}`);
+    console.log(`   - Itinerary steps: ${attendeeRegistration.itinerary.steps.length}`);
+    console.log(`   - Apple Pass: ${attendeeRegistration.applePassUrl}`);
 
-  console.log('\n📋 Itinerary breakdown:');
-  attendeeRegistration.itinerary.steps.slice(0, 5).forEach((step: any, index: number) => {
-    console.log(`   ${index + 1}. ${step.type.toUpperCase()}: ${step.description}`);
-    console.log(`      Time: ${step.scheduledTime.toLocaleString()}`);
-  });
-  console.log(`   ... and ${attendeeRegistration.itinerary.steps.length - 5} more steps`);
+    console.log('\n📋 Itinerary breakdown (first 5 steps):');
+    attendeeRegistration.itinerary.steps.slice(0, 5).forEach((step: any, index: number) => {
+      console.log(`   ${index + 1}. ${step.type.toUpperCase()}: ${step.description}`);
+      console.log(`      Time: ${step.scheduledTime.toLocaleString()}`);
+      if (step.details && Object.keys(step.details).length > 0) {
+        console.log(`      Details: ${JSON.stringify(step.details, null, 8).replace(/\n/g, '\n      ')}`);
+      }
+    });
+    console.log(`   ... and ${attendeeRegistration.itinerary.steps.length - 5} more steps`);
+
+    // Show Travel node bookings
+    console.log('\n🎫 Travel Bookings Created:');
+    const travelStatus = travelAgency.getStatus();
+    console.log(`   - Total bookings: ${travelStatus.totalBookings}`);
+    console.log(`   - Flight bookings: ${travelStatus.bookingsByType.flight || 0}`);
+    console.log(`   - Hotel bookings: ${travelStatus.bookingsByType.hotel || 0}`);
+  }
 
   // ==========================================
   // 8. Demonstrate Node Cloning

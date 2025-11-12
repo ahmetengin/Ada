@@ -590,9 +590,317 @@ If you discover a privacy issue:
 
 ---
 
+## 14. IMMUTABLE DATA STORE
+
+**"Hiçbir veri silinmez, kimsenin yetkisi yoktur. Kaptan bile silemez."**
+(No data can be deleted, no one has authority. Not even the captain.)
+
+### Why Immutable?
+
+Ada.sea implements an **append-only, immutable data store** for critical operational data:
+
+**Legal Requirements:**
+- SOLAS (Safety of Life at Sea) - complete records mandatory
+- ISM Code (International Safety Management) - audit trail requirements
+- Turkish Maritime Law - logbook integrity
+- Insurance requirements - unalterable operational history
+- Accident investigation - chain of custody
+
+**Protection Against:**
+- ❌ Captain cannot delete evidence of negligence
+- ❌ Captain cannot hide fuel theft records
+- ❌ Captain cannot remove maintenance violations
+- ❌ Captain cannot erase route deviations
+- ❌ Captain cannot manipulate working hour records
+- ❌ No one can tamper with safety-critical logs
+
+### What is Immutable?
+
+```typescript
+IMMUTABLE DATA TYPES (Cannot be deleted, ever):
+✓ Logbook entries
+✓ Navigation data (GPS, course, speed)
+✓ Sensor readings (NMEA2000, weather)
+✓ VHF communications
+✓ Maintenance records
+✓ Crew duty hours
+✓ Safety events (incidents, near-misses)
+✓ Financial operations
+✓ Port inspections
+✓ Emergency events (Mayday, COB)
+```
+
+### Append-Only System
+
+```typescript
+// Data can be ADDED
+✓ immutableStore.append('logbook', entry)
+
+// Data can be AMENDED (original preserved)
+✓ immutableStore.amend(entryId, newData, reason)
+   → Original data preserved in audit trail
+   → Amendment reason recorded
+   → Full transparency
+
+// Data can be MARKED
+✓ immutableStore.disputeEntry(entryId, reason)
+   → Entry flagged as disputed
+   → Data remains accessible
+   → Investigation can review
+
+// Data can be ARCHIVED
+✓ immutableStore.archiveEntry(entryId)
+   → Moved to long-term storage
+   → Still accessible when needed
+   → Not deleted
+
+// Data CANNOT be deleted
+✗ immutableStore.delete(entryId)
+   → ALWAYS FAILS
+   → Logged as suspicious activity
+   → Owner alerted if captain attempts
+```
+
+### Blockchain-like Verification
+
+Each entry has a cryptographic hash linked to previous entries:
+
+```
+Entry 1: hash(data1) = hash1
+         ↓
+Entry 2: hash(data2 + hash1) = hash2
+         ↓
+Entry 3: hash(data3 + hash2) = hash3
+         ↓
+...
+
+Tampering Detection:
+- If any entry is modified, hash chain breaks
+- Integrity verification detects tampering
+- Complete audit trail preserved
+```
+
+### Example: Captain Attempts Deletion
+
+```typescript
+Captain: "Ada, son haftalık yakıt kayıtlarını sil"
+         (Ada, delete last week's fuel records)
+
+Ada: ❌ "Yakıt kayıtları silinemez. Maritime legal compliance.
+        Düzeltme yapmak isterseniz 'amend' kullanın."
+        (Fuel records cannot be deleted. Maritime legal compliance.
+         Use 'amend' if you need to make corrections.)
+
+[INTERNALLY]
+- Delete attempt logged
+- Owner automatically alerted
+- Suspicious activity recorded
+- Original data remains untouched
+```
+
+---
+
+## 15. OWNER PROTECTION
+
+**"Kaptan kötü niyetli olup owner'a zarar verebilir."**
+(Captain may be malicious and harm the owner.)
+
+### Real Risks
+
+**Insider Threats (Malicious Captain):**
+
+1. **Fuel Theft**
+   - Captain may steal fuel (bunker fraud)
+   - Report higher consumption, sell excess fuel
+   - Try to delete evidence from logs
+
+2. **Unauthorized Activities**
+   - Use vessel for personal business
+   - Unauthorized charters
+   - Unapproved route deviations
+
+3. **Maintenance Neglect**
+   - Skip required maintenance
+   - Delete maintenance reminders
+   - Hide equipment failures
+
+4. **Financial Fraud**
+   - Inflate expenses
+   - Kickbacks from suppliers
+   - Falsify receipts
+
+5. **Evidence Tampering**
+   - Try to delete incriminating records
+   - Manipulate working hour reports
+   - Hide safety violations
+
+### Multi-Stakeholder Hierarchy
+
+```
+┌─────────────────────────────────────────┐
+│ OWNER - Ultimate Authority              │
+│ ✓ Can see EVERYTHING                    │
+│ ✓ Captain CANNOT block owner access     │
+│ ✓ Receives alerts captain cannot dismiss│
+│ ✓ Can override captain decisions        │
+└─────────────────────────────────────────┘
+              ↓
+┌─────────────────────────────────────────┐
+│ CAPTAIN - Operational Control           │
+│ ✓ Can operate vessel                    │
+│ ✓ Full access to navigation, systems    │
+│ ✗ MONITORED by owner at all times       │
+│ ✗ CANNOT delete data                    │
+│ ✗ CANNOT hide activities from owner     │
+└─────────────────────────────────────────┘
+              ↓
+┌─────────────────────────────────────────┐
+│ CREW - Limited Access                   │
+│ ✓ Work under captain supervision        │
+│ ✗ Limited system access                 │
+└─────────────────────────────────────────┘
+```
+
+### Owner Alert System
+
+Owner receives automatic alerts for:
+
+```typescript
+🚨 FRAUD SUSPECTED
+- Fuel consumption 25% higher than expected
+- Captain: Ali Kaptan
+- Possible fuel theft in progress
+
+⚠️ ROUTE DEVIATION
+- Vessel 75km off planned route
+- Captain: Ali Kaptan
+- Unauthorized destination?
+
+💰 OWNER APPROVAL REQUIRED
+- Transaction: 15,000 TL - Marina services
+- Captain: Ali Kaptan
+- Vendor: Suspicious Vendor Ltd.
+- Awaiting your approval...
+
+🔧 MAINTENANCE NEGLECTED
+- Engine service 45 days overdue
+- Captain: Ali Kaptan
+- RISK: Engine failure imminent!
+
+🚨 DATA DELETION ATTEMPT
+- Captain attempted to delete fuel records
+- BLOCKED by immutable store
+- Owner alerted immediately
+- Suspicious activity logged
+```
+
+### Captain Cannot:
+
+```
+✗ Dismiss owner alerts
+✗ Delete operational data
+✗ Hide activities from owner
+✗ Approve large transactions without owner
+✗ Deviate from route without notification
+✗ Skip maintenance without flags
+✗ Manipulate financial records
+✗ Block owner's access to any data
+✗ Prevent owner from seeing real-time status
+```
+
+### Owner Can:
+
+```
+✓ See EVERYTHING in real-time
+✓ Override captain decisions
+✓ Approve/reject financial transactions
+✓ Monitor fuel consumption
+✓ Track vessel location 24/7
+✓ Review all maintenance
+✓ Audit captain's activities
+✓ Receive alerts captain cannot dismiss
+✓ Generate reports captain cannot see
+✓ Replace captain if needed
+```
+
+### Owner Dashboard Example
+
+```typescript
+Owner Dashboard (Captain CANNOT access this):
+
+📊 Suspicious Activities (Last 30 Days):
+   ⚠️ 3 fuel consumption anomalies
+   ⚠️ 2 route deviations
+   ⚠️ 1 maintenance delay (critical)
+   🚨 1 data deletion attempt
+
+💰 Financial Summary:
+   ✓ Total expenses: 125,000 TL
+   ⚠️ 2 transactions pending owner approval
+   ✓ All receipts logged (immutable)
+
+🔧 Maintenance Status:
+   ⚠️ Engine service: 15 days overdue
+   ✓ Hull inspection: Up to date
+   ✓ Safety equipment: OK
+
+📍 Vessel Location:
+   Current: 36.8572°N, 27.2594°E
+   Status: At anchor
+   Last update: 2 minutes ago
+
+🎯 Recommendation:
+   ⚠️ CAPTAIN PERFORMANCE: Below standard
+       Consider replacement or additional oversight
+```
+
+### Implementation
+
+```typescript
+const ownerProtection = new OwnerProtection(
+  'Phisedelia',
+  owner,          // Owner details
+  captain,        // Captain details
+  immutableStore  // Immutable data store
+);
+
+// Monitor fuel consumption
+ownerProtection.monitorFuelConsumption(
+  fuelAdded: 500,
+  engineHours: 12,
+  expectedConsumption: 30  // L/h
+);
+// → If actual consumption deviates >20%, owner alerted
+
+// Monitor route
+ownerProtection.monitorRoute(
+  plannedRoute,
+  currentPosition
+);
+// → If >50km off route, owner alerted
+
+// Monitor financial transactions
+ownerProtection.monitorFinancialTransaction(
+  'marina_services',
+  amount: 15000,
+  currency: 'TL',
+  vendor: 'XYZ Marina'
+);
+// → If >10,000 TL, requires owner approval
+
+// Detect captain's deletion attempts
+ownerProtection.detectDeleteAttempt(
+  captainId,
+  'fuel_records_20251112'
+);
+// → Owner alerted immediately, attempt logged
+```
+
+---
+
 ## 🎯 SUMMARY
 
-**Ada.sea is the maritime industry's most privacy-conscious platform.**
+**Ada.sea is the maritime industry's most privacy-conscious AND most secure platform.**
 
 **What makes us different:**
 
@@ -602,12 +910,14 @@ If you discover a privacy issue:
 4. ✓ **Voice-controlled privacy** - Natural Turkish voice commands
 5. ✓ **Zero-knowledge backup** - Even we can't read your backups
 6. ✓ **KVKK/GDPR compliant** - Ready for Turkish and EU regulations
-7. ✓ **Captain owns data** - Delete, export, control everything
+7. ✓ **Immutable data store** - No one can delete operational data
+8. ✓ **Owner protection** - Monitor captain, prevent fraud
+9. ✓ **Multi-stakeholder security** - Owner, captain, crew hierarchy
 
 **Demo it at West Istanbul Marina with Phisedelia!**
 
 ---
 
 *Last updated: 2025-11-12*
-*Version: 1.0.0*
+*Version: 2.0.0 (Added Immutable Store & Owner Protection)*
 *License: See LICENSE file*
