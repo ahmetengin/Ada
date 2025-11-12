@@ -101,6 +101,55 @@ Ada: "28 deniz mili. Tahmin edilen 15-20 knot kuzey rüzgarı var.
 
 See [nodes/ada.sea/ADA_OBSERVER_README.md](nodes/ada.sea/ADA_OBSERVER_README.md) for full Ada Observer documentation.
 
+### 🔒 Privacy-First Architecture
+
+**Ada.sea's critical differentiator** - Unlike ALL competitors (Zora, Garmin, Raymarine), Ada implements a **zero-trust, privacy-first architecture** where NO data leaves the vessel without explicit captain authorization.
+
+**Key Privacy Features:**
+
+- 🔐 **Zero Trust by Default** - NO automatic cloud sync, NO third-party sharing
+- 🎤 **Voice-Controlled Consent** - Captain approval required for every data transfer
+- 📊 **Complete Audit Trail** - Full transparency of all data sharing
+- 🏝️ **Edge-First Computing** - All data stays on-board (Mac Mini M4)
+- 🔑 **Zero-Knowledge Backup** - Optional cloud backup with client-side encryption
+- ⚖️ **KVKK & GDPR Compliant** - Ready for Turkish and EU data protection laws
+- 🎯 **Granular Data Classification** - 4-level data privacy (PRIVATE, RESTRICTED, CONDITIONAL, ANONYMOUS)
+
+**Privacy Manifesto:** *"Kaptan ne derse o olur. Nokta."* (What the captain says, goes. Period.)
+
+**Example: Marina Check-in with Privacy**
+
+```typescript
+Captain: "Ada, West Istanbul Marina'ya check-in yap"
+
+Ada: "Marina'ya şu bilgileri göndermem gerekiyor:
+     - Tekne: Phisedelia
+     - Uzunluk: 65 feet
+     - Berth: C-42
+     Onaylıyor musunuz?"
+
+Captain: "Evet"
+
+Ada: ✓ "Check-in tamamlandı."
+
+[AUDIT LOG]
+✓ Sent: vessel_name, berth_number, current_position
+✗ NOT sent: GPS history, crew info, financial data, communication logs
+✓ Captain: voice_confirmed
+```
+
+**What's Different from Competitors:**
+
+| Feature | Zora | Garmin | Raymarine | **Ada.sea** |
+|---------|------|--------|-----------|-------------|
+| Cloud Default | ✓ Yes | ✓ Yes | ✓ Yes | ✗ **No** |
+| Auto Sharing | ✓ Yes | Limited | Limited | ✗ **No** |
+| Captain Control | Limited | Limited | Limited | ✓ **Total** |
+| Audit Trail | ✗ No | ✗ No | ✗ No | ✓ **Yes** |
+| Zero-Knowledge | ✗ No | ✗ No | ✗ No | ✓ **Yes** |
+
+See [PRIVACY.md](PRIVACY.md) for complete privacy architecture documentation.
+
 ## 🛠️ Technology Stack
 
 ### Core Framework
