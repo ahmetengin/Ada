@@ -11,6 +11,8 @@ import { CrewManagement } from './services/CrewManagement.js';
 import { PassengerService } from './services/PassengerService.js';
 import { MenuPlanning } from './services/MenuPlanning.js';
 import { VoyagePlanning } from './services/VoyagePlanning.js';
+import { VHFRadioService } from './services/VHFRadioService.js';
+import { VHFMessageClassifier } from './services/VHFMessageClassifier.js';
 
 export interface SeaNodeConfig extends Omit<BaseNodeOptions, 'type' | 'capabilities'> {
   vessel: VesselData;
@@ -27,6 +29,8 @@ export class SeaNode extends BaseNode {
   private passengerService: PassengerService;
   private menuPlanning: MenuPlanning;
   private voyagePlanning: VoyagePlanning;
+  private vhfRadioService: VHFRadioService;
+  private vhfMessageClassifier: VHFMessageClassifier;
 
   // State
   private currentVoyage?: VoyagePlan;
@@ -47,6 +51,8 @@ export class SeaNode extends BaseNode {
           'menu-planning',
           'voyage-planning',
           'marina-communication',
+          'vhf-radio-monitoring',
+          'emergency-detection',
         ],
         services: [
           'vessel-monitoring',
@@ -54,12 +60,16 @@ export class SeaNode extends BaseNode {
           'provisioning',
           'document-management',
           'reservation-management',
+          'vhf-scanner',
+          'radio-transcription',
         ],
         integrations: [
           'nmea2000',
           'weather-api',
           'marina-systems',
           'e-invoice',
+          'rtl-sdr',
+          'vhf-radio',
         ],
       },
     });
@@ -73,6 +83,13 @@ export class SeaNode extends BaseNode {
     this.passengerService = new PassengerService();
     this.menuPlanning = new MenuPlanning();
     this.voyagePlanning = new VoyagePlanning();
+    this.vhfRadioService = new VHFRadioService({
+      geographicMode: 'turkey',
+      autoTuneByLocation: true,
+      enableVAD: true,
+      enableSTT: true,
+    });
+    this.vhfMessageClassifier = new VHFMessageClassifier();
   }
 
   /**
@@ -86,6 +103,9 @@ export class SeaNode extends BaseNode {
 
     // Set up NMEA2000 data processing
     this.setupNMEAProcessing();
+
+    // Set up VHF radio monitoring
+    this.setupVHFRadioHandlers();
 
     this.logEvent('Sea node initialized', { id: this.identity.id });
   }
@@ -117,6 +137,9 @@ export class SeaNode extends BaseNode {
 
       case 'check-weather':
         return await this.checkWeatherTask(data);
+
+      case 'vhf-radio':
+        return await this.manageVHFRadioTask(data);
 
       default:
         throw new Error(`Unknown task type: ${type}`);
@@ -416,6 +439,117 @@ export class SeaNode extends BaseNode {
     // In production, this would connect to actual NMEA2000 network
     // For now, just set up the processing pipeline
     this.emit('nmea-ready');
+  }
+
+  /**
+   * Setup VHF radio event handlers
+   */
+  private setupVHFRadioHandlers(): void {
+    // Handle VHF transmissions
+    this.vhfRadioService.on('transmission:detected', (transmission) => {
+      // Classify the transmission
+      const classification = this.vhfMessageClassifier.classify(transmission);
+
+      // Remember important transmissions
+      if (classification.priority === 'urgent' || classification.priority === 'high') {
+        this.remember('event', {
+          type: 'vhf-transmission',
+          transmission,
+          classification,
+        }, ['vhf', 'radio', classification.type], 8);
+      }
+
+      // Emit for other systems
+      this.emit('vhf:transmission', { transmission, classification });
+    });
+
+    // Handle emergency alerts
+    this.vhfRadioService.on('alert:emergency', (alert) => {
+      this.remember('event', {
+        type: 'emergency-alert',
+        alert,
+      }, ['vhf', 'emergency', 'alert'], 10);
+
+      // Emit critical alert
+      this.emit('alert', {
+        severity: 'critical',
+        source: 'vhf-radio',
+        message: alert.message,
+        data: alert,
+      });
+    });
+
+    // Handle critical alerts
+    this.vhfRadioService.on('alert:critical', (alert) => {
+      this.remember('event', {
+        type: 'critical-alert',
+        alert,
+      }, ['vhf', 'critical', 'alert'], 9);
+
+      this.emit('alert', {
+        severity: 'warning',
+        source: 'vhf-radio',
+        message: alert.message,
+        data: alert,
+      });
+    });
+
+    // Handle location updates from NMEA for VHF auto-tuning
+    this.on('location:update', (location) => {
+      if (location.latitude && location.longitude) {
+        this.vhfRadioService.updateLocation(location.latitude, location.longitude);
+      }
+    });
+
+    this.emit('vhf-ready');
+  }
+
+  /**
+   * Manage VHF radio task
+   */
+  private async manageVHFRadioTask(data: any): Promise<any> {
+    const { action, ...params } = data;
+
+    switch (action) {
+      case 'start-scanner':
+        await this.vhfRadioService.startScanning();
+        return { success: true, message: 'VHF scanner started' };
+
+      case 'stop-scanner':
+        await this.vhfRadioService.stopScanning();
+        return { success: true, message: 'VHF scanner stopped' };
+
+      case 'get-state':
+        return this.vhfRadioService.getState();
+
+      case 'get-transmissions':
+        return this.vhfRadioService.getTransmissions(params.limit || 50);
+
+      case 'get-alerts':
+        return this.vhfRadioService.getAlerts();
+
+      case 'get-statistics':
+        return this.vhfRadioService.getStatistics();
+
+      case 'set-channels':
+        this.vhfRadioService.setActiveChannels(params.channels);
+        return { success: true, message: 'Active channels updated' };
+
+      case 'update-location':
+        this.vhfRadioService.updateLocation(params.latitude, params.longitude);
+        return { success: true, message: 'Location updated' };
+
+      case 'classify-transmission':
+        const transmission = params.transmission;
+        const classification = this.vhfMessageClassifier.classify(transmission);
+        return { transmission, classification };
+
+      case 'export-data':
+        return this.vhfRadioService.exportData();
+
+      default:
+        throw new Error(`Unknown VHF radio action: ${action}`);
+    }
   }
 
   /**
