@@ -59,6 +59,48 @@ Ada includes a **comprehensive observability system** for real-time monitoring a
 
 See [observability/README.md](observability/README.md) for detailed documentation.
 
+### AI Voice Agent 🎤🤖
+
+**Ada's biggest differentiator** - Unlike competitors (Aquamap, Zora 3.0) that offer basic voice transcription, Ada provides a **full-fledged AI maritime assistant** powered by conversational AI and fleet-wide learning.
+
+**Key Capabilities:**
+
+- 🧠 **Contextual Maritime Intelligence** - Understands vessel state, weather, navigation context
+- 🌊 **Fleet-Wide Learning (SEAL)** - Learns from all vessels in the fleet, shares knowledge
+- 🗣️ **Multilingual** - Turkish, English, Greek (critical for Mediterranean operations)
+- ⚓ **Proactive Suggestions** - Not just answers questions, but provides intelligent recommendations
+- 🚨 **Emergency Voice Commands** - Hands-free Mayday, COB marking, emergency protocols
+
+**Example Interactions:**
+
+```typescript
+// Contextual understanding
+Captain: "Ada, rüzgar çok sert oldu"
+Ada: "Evet, 28 knot true wind var. Şu anda 6.2 knot yapıyorsunuz.
+     Reef almanızı öneriyorum. Genoa'yı furling'e alabilir misiniz?"
+
+// Fleet learning in action
+Captain (Boat A): "Ada, bu körfezde holding çok iyi değil"
+[SEAL system learns and creates memory]
+Captain (Boat B): "Ada, demir atalım"
+Ada: "Dikkat: Bu bölgede sandy bottom, poor holding reported.
+     Extra scope öneriyorum (1:7 yerine 1:8)"
+
+// Proactive assistance
+Captain: "Ada, yarın Bodrum'a gitmek istiyorum"
+Ada: "28 deniz mili. Tahmin edilen 15-20 knot kuzey rüzgarı var.
+     Optimum çıkış saati saat 09:00, tahmini varış 13:30."
+```
+
+**Tech Stack:**
+- OpenAI Whisper (Speech-to-text)
+- Claude/GPT-4 (Conversational AI with maritime domain knowledge)
+- SEAL System (Learning from fleet experiences)
+- RAG + Neo4j (Knowledge retrieval)
+- Text-to-Speech (Voice responses)
+
+See [nodes/ada.sea/ADA_OBSERVER_README.md](nodes/ada.sea/ADA_OBSERVER_README.md) for full Ada Observer documentation.
+
 ## 🛠️ Technology Stack
 
 ### Core Framework
