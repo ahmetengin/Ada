@@ -321,3 +321,61 @@ export interface NodeState {
   connectedNodes: string[];
   pendingMessages: number;
 }
+
+// VHF Radio Communication types (Ada.Sea)
+export interface VHFChannel {
+  channel: number;
+  frequency: number; // MHz
+  type: 'intership' | 'marina' | 'emergency' | 'port' | 'coast_guard' | 'dsc';
+  name: string;
+  description: string;
+  simplex: boolean;
+  txFrequency?: number; // For duplex channels
+  rxFrequency?: number; // For duplex channels
+}
+
+export interface VHFTransmission {
+  id: string;
+  channel: number;
+  frequency: number;
+  timestamp: Date;
+  duration: number; // seconds
+  signalStrength: number; // dBm
+  hasVoice: boolean;
+  transcription?: string;
+  classification: VHFMessageType;
+  location?: {
+    latitude: number;
+    longitude: number;
+  };
+}
+
+export type VHFMessageType =
+  | 'emergency'       // Ch 16 distress
+  | 'intership'       // Ship-to-ship communication
+  | 'marina'          // Marina working channel
+  | 'port_ops'        // Port operations
+  | 'coast_guard'     // Coast Guard
+  | 'weather'         // Weather broadcast
+  | 'safety'          // Safety navigation
+  | 'unknown';
+
+export interface VHFScannerConfig {
+  priorityChannels: number[];
+  scanIntervalMs: number;
+  minSignalStrength: number; // dBm
+  enableVAD: boolean;
+  enableSTT: boolean;
+  geographicMode: 'turkey' | 'international';
+  autoTuneByLocation: boolean;
+}
+
+export interface VHFAlert {
+  id: string;
+  severity: 'info' | 'warning' | 'critical' | 'emergency';
+  channel: number;
+  message: string;
+  timestamp: Date;
+  requiresAction: boolean;
+  transmission?: VHFTransmission;
+}

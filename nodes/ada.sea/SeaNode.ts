@@ -11,6 +11,9 @@ import { CrewManagement } from './services/CrewManagement.js';
 import { PassengerService } from './services/PassengerService.js';
 import { MenuPlanning } from './services/MenuPlanning.js';
 import { VoyagePlanning } from './services/VoyagePlanning.js';
+import { VHFRadioService } from './services/VHFRadioService.js';
+import { VHFMessageClassifier } from './services/VHFMessageClassifier.js';
+import { VHFRaceMode } from './services/VHFRaceMode.js';
 
 export interface SeaNodeConfig extends Omit<BaseNodeOptions, 'type' | 'capabilities'> {
   vessel: VesselData;
@@ -27,6 +30,9 @@ export class SeaNode extends BaseNode {
   private passengerService: PassengerService;
   private menuPlanning: MenuPlanning;
   private voyagePlanning: VoyagePlanning;
+  private vhfRadioService: VHFRadioService;
+  private vhfMessageClassifier: VHFMessageClassifier;
+  private vhfRaceMode?: VHFRaceMode;
 
   // State
   private currentVoyage?: VoyagePlan;
@@ -47,6 +53,8 @@ export class SeaNode extends BaseNode {
           'menu-planning',
           'voyage-planning',
           'marina-communication',
+          'vhf-radio-monitoring',
+          'emergency-detection',
         ],
         services: [
           'vessel-monitoring',
@@ -54,12 +62,16 @@ export class SeaNode extends BaseNode {
           'provisioning',
           'document-management',
           'reservation-management',
+          'vhf-scanner',
+          'radio-transcription',
         ],
         integrations: [
           'nmea2000',
           'weather-api',
           'marina-systems',
           'e-invoice',
+          'rtl-sdr',
+          'vhf-radio',
         ],
       },
     });
@@ -73,6 +85,13 @@ export class SeaNode extends BaseNode {
     this.passengerService = new PassengerService();
     this.menuPlanning = new MenuPlanning();
     this.voyagePlanning = new VoyagePlanning();
+    this.vhfRadioService = new VHFRadioService({
+      geographicMode: 'turkey',
+      autoTuneByLocation: true,
+      enableVAD: true,
+      enableSTT: true,
+    });
+    this.vhfMessageClassifier = new VHFMessageClassifier();
   }
 
   /**
@@ -86,6 +105,9 @@ export class SeaNode extends BaseNode {
 
     // Set up NMEA2000 data processing
     this.setupNMEAProcessing();
+
+    // Set up VHF radio monitoring
+    this.setupVHFRadioHandlers();
 
     this.logEvent('Sea node initialized', { id: this.identity.id });
   }
@@ -117,6 +139,9 @@ export class SeaNode extends BaseNode {
 
       case 'check-weather':
         return await this.checkWeatherTask(data);
+
+      case 'vhf-radio':
+        return await this.manageVHFRadioTask(data);
 
       default:
         throw new Error(`Unknown task type: ${type}`);
@@ -416,6 +441,318 @@ export class SeaNode extends BaseNode {
     // In production, this would connect to actual NMEA2000 network
     // For now, just set up the processing pipeline
     this.emit('nmea-ready');
+  }
+
+  /**
+   * Setup VHF radio event handlers
+   */
+  private setupVHFRadioHandlers(): void {
+    // Handle VHF transmissions
+    this.vhfRadioService.on('transmission:detected', (transmission) => {
+      // Classify the transmission
+      const classification = this.vhfMessageClassifier.classify(transmission);
+
+      // Pass to race mode if active
+      if (this.vhfRaceMode && this.vhfRaceMode.isRaceModeActive()) {
+        this.vhfRaceMode.processTransmission(transmission);
+      }
+
+      // Remember important transmissions
+      if (classification.priority === 'urgent' || classification.priority === 'high') {
+        this.remember('event', {
+          type: 'vhf-transmission',
+          transmission,
+          classification,
+        }, ['vhf', 'radio', classification.type], 8);
+      }
+
+      // Emit for other systems
+      this.emit('vhf:transmission', { transmission, classification });
+    });
+
+    // Handle emergency alerts
+    this.vhfRadioService.on('alert:emergency', (alert) => {
+      this.remember('event', {
+        type: 'emergency-alert',
+        alert,
+      }, ['vhf', 'emergency', 'alert'], 10);
+
+      // Emit critical alert
+      this.emit('alert', {
+        severity: 'critical',
+        source: 'vhf-radio',
+        message: alert.message,
+        data: alert,
+      });
+    });
+
+    // Handle critical alerts
+    this.vhfRadioService.on('alert:critical', (alert) => {
+      this.remember('event', {
+        type: 'critical-alert',
+        alert,
+      }, ['vhf', 'critical', 'alert'], 9);
+
+      this.emit('alert', {
+        severity: 'warning',
+        source: 'vhf-radio',
+        message: alert.message,
+        data: alert,
+      });
+    });
+
+    // Handle location updates from NMEA for VHF auto-tuning
+    this.on('location:update', (location) => {
+      if (location.latitude && location.longitude) {
+        this.vhfRadioService.updateLocation(location.latitude, location.longitude);
+      }
+    });
+
+    this.emit('vhf-ready');
+  }
+
+  /**
+   * Manage VHF radio task
+   */
+  private async manageVHFRadioTask(data: any): Promise<any> {
+    const { action, ...params } = data;
+
+    switch (action) {
+      case 'start-scanner':
+        await this.vhfRadioService.startScanning();
+        return { success: true, message: 'VHF scanner started' };
+
+      case 'stop-scanner':
+        await this.vhfRadioService.stopScanning();
+        return { success: true, message: 'VHF scanner stopped' };
+
+      case 'get-state':
+        return this.vhfRadioService.getState();
+
+      case 'get-transmissions':
+        return this.vhfRadioService.getTransmissions(params.limit || 50);
+
+      case 'get-alerts':
+        return this.vhfRadioService.getAlerts();
+
+      case 'get-statistics':
+        return this.vhfRadioService.getStatistics();
+
+      case 'set-channels':
+        this.vhfRadioService.setActiveChannels(params.channels);
+        return { success: true, message: 'Active channels updated' };
+
+      case 'update-location':
+        this.vhfRadioService.updateLocation(params.latitude, params.longitude);
+        return { success: true, message: 'Location updated' };
+
+      case 'classify-transmission':
+        const transmission = params.transmission;
+        const classification = this.vhfMessageClassifier.classify(transmission);
+        return { transmission, classification };
+
+      case 'export-data':
+        return this.vhfRadioService.exportData();
+
+      case 'activate-race-mode':
+        return this.activateRaceMode(params);
+
+      case 'deactivate-race-mode':
+        return this.deactivateRaceMode();
+
+      case 'get-race-events':
+        if (!this.vhfRaceMode) {
+          return { error: 'Race mode not active' };
+        }
+        return this.vhfRaceMode.getRaceEvents();
+
+      case 'get-race-summary':
+        if (!this.vhfRaceMode) {
+          return { error: 'Race mode not active' };
+        }
+        return this.vhfRaceMode.getRaceSummary();
+
+      default:
+        throw new Error(`Unknown VHF radio action: ${action}`);
+    }
+  }
+
+  /**
+   * Activate race mode for VHF monitoring
+   */
+  private activateRaceMode(params: {
+    raceName: string;
+    committeeChannel?: number;
+    fleetChannel?: number;
+    startTime?: string;
+    courseMarks?: string[];
+  }): any {
+    this.vhfRaceMode = new VHFRaceMode({
+      raceName: params.raceName,
+      raceChannels: [6, 73, 72], // Standard race channels
+      committeeChannel: params.committeeChannel || 73,
+      fleetChannel: params.fleetChannel || 6,
+      startTime: params.startTime ? new Date(params.startTime) : undefined,
+      courseMarks: params.courseMarks,
+    });
+
+    // Setup race event handlers
+    this.setupRaceModeHandlers();
+
+    // Activate race mode
+    this.vhfRaceMode.activate();
+
+    // Set VHF scanner to race channels
+    this.vhfRadioService.setActiveChannels(this.vhfRaceMode.getRaceChannels());
+
+    this.remember('event', {
+      type: 'race-mode-activated',
+      raceName: params.raceName,
+    }, ['vhf', 'race'], 9);
+
+    return {
+      success: true,
+      message: 'Race mode activated',
+      channels: this.vhfRaceMode.getRaceChannels(),
+    };
+  }
+
+  /**
+   * Deactivate race mode
+   */
+  private deactivateRaceMode(): any {
+    if (!this.vhfRaceMode) {
+      return { error: 'Race mode not active' };
+    }
+
+    this.vhfRaceMode.deactivate();
+    this.vhfRaceMode = undefined;
+
+    // Reset to normal channel priority
+    const config = this.vhfRadioService.getStatistics();
+    // Back to geographic mode
+
+    return {
+      success: true,
+      message: 'Race mode deactivated',
+    };
+  }
+
+  /**
+   * Setup race mode event handlers
+   */
+  private setupRaceModeHandlers(): void {
+    if (!this.vhfRaceMode) {
+      return;
+    }
+
+    // Warning signal (5 minutes)
+    this.vhfRaceMode.on('race:warning_signal', (data) => {
+      this.remember('event', {
+        type: 'race-warning-signal',
+        class: data.class,
+        event: data.event,
+      }, ['vhf', 'race', 'start-sequence'], 9);
+
+      this.emit('race:warning', data);
+    });
+
+    // Preparatory signal (4 minutes)
+    this.vhfRaceMode.on('race:preparatory_signal', (data) => {
+      this.remember('event', {
+        type: 'race-preparatory-signal',
+        class: data.class,
+        event: data.event,
+      }, ['vhf', 'race', 'start-sequence'], 9);
+
+      this.emit('race:preparatory', data);
+    });
+
+    // One minute signal
+    this.vhfRaceMode.on('race:one_minute_signal', (data) => {
+      this.remember('event', {
+        type: 'race-one-minute-signal',
+        class: data.class,
+        event: data.event,
+      }, ['vhf', 'race', 'start-sequence'], 10);
+
+      this.emit('race:one_minute', data);
+    });
+
+    // START!
+    this.vhfRaceMode.on('race:start', (data) => {
+      this.remember('event', {
+        type: 'race-start',
+        class: data.class,
+        event: data.event,
+        sequence: data.sequence,
+      }, ['vhf', 'race', 'start'], 10);
+
+      this.emit('race:start', data);
+      this.emit('alert', {
+        severity: 'info',
+        source: 'vhf-race',
+        message: `Race start for ${data.class}!`,
+        data,
+      });
+    });
+
+    // General recall
+    this.vhfRaceMode.on('race:general_recall', (event) => {
+      this.remember('event', {
+        type: 'race-general-recall',
+        event,
+      }, ['vhf', 'race', 'recall'], 9);
+
+      this.emit('race:general_recall', event);
+      this.emit('alert', {
+        severity: 'warning',
+        source: 'vhf-race',
+        message: 'General Recall!',
+        data: event,
+      });
+    });
+
+    // Abandonment
+    this.vhfRaceMode.on('race:abandonment', (event) => {
+      this.remember('event', {
+        type: 'race-abandonment',
+        event,
+      }, ['vhf', 'race', 'abandonment'], 9);
+
+      this.emit('race:abandonment', event);
+      this.emit('alert', {
+        severity: 'warning',
+        source: 'vhf-race',
+        message: 'Race Abandoned',
+        data: event,
+      });
+    });
+
+    // Course change
+    this.vhfRaceMode.on('race:course_change', (event) => {
+      this.remember('event', {
+        type: 'race-course-change',
+        event,
+      }, ['vhf', 'race', 'course'], 8);
+
+      this.emit('race:course_change', event);
+    });
+
+    // Mark rounding
+    this.vhfRaceMode.on('race:mark_rounding', (event) => {
+      this.remember('event', {
+        type: 'race-mark-rounding',
+        event,
+      }, ['vhf', 'race', 'mark'], 7);
+
+      this.emit('race:mark_rounding', event);
+    });
+
+    // Fleet comms
+    this.vhfRaceMode.on('race:fleet_comms', (data) => {
+      this.emit('race:fleet_comms', data);
+    });
   }
 
   /**
