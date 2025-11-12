@@ -5,5 +5,8 @@
 
 export * from './PrivacyTypes.js';
 export * from './PrivacyCore.js';
+export * from './CaptainDataAccess.js';
+export * from './ImmutableDataStore.js';
+export * from './OwnerProtection.js';
 export * from './AdaMarinaPrivacyIntegration.js';
 export * from './ZeroKnowledgeBackup.js';
