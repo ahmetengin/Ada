@@ -131,7 +131,7 @@ async function main() {
   // ==========================================
   console.log('\n📅 Creating International Maritime Congress...');
 
-  const event = congress.processTask({
+  const event = await congress.processTask({
     type: 'create-event',
     data: {
       name: 'International Maritime Technology Congress 2025',

@@ -182,7 +182,11 @@ export class TravelNode extends BaseNode {
       address: data.location,
       checkIn: data.checkIn,
       checkOut: data.checkOut,
-      rooms: data.rooms,
+      rooms: data.rooms.map(room => ({
+        type: room.type,
+        count: 1,
+        guests: room.guests,
+      })),
       price: nights * data.rooms.length * 150, // $150 per room per night
     };
 

@@ -15,8 +15,8 @@ import {
   MaintenanceTask,
   SystemMonitoring,
   AwayMode,
-  ParsedNMEAData,
 } from '../../../core/types.js';
+import { ParsedNMEAData } from './NMEA2000Parser.js';
 
 export interface AdaObserverConfig {
   vesselName: string;

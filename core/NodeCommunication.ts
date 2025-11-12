@@ -271,7 +271,7 @@ export class NodeCommunication extends EventEmitter {
         messages = messages.filter(m => m.type === filter.type);
       }
       if (filter.subject) {
-        messages = messages.filter(m => m.subject.includes(filter.subject));
+        messages = messages.filter(m => m.subject.includes(filter.subject!));
       }
       if (filter.priority) {
         messages = messages.filter(m => m.priority === filter.priority);
