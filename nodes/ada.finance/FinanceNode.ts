@@ -1,17 +1,21 @@
 /**
  * FinanceNode - AI-powered financial management node
  * Manages payments, invoicing, accounting, and financial tracking
+ * Integrated with Paraşüt for Turkish tax compliance
  */
 
 import { BaseNode, BaseNodeOptions } from '../../core/BaseNode.js';
 import { v4 as uuidv4 } from 'uuid';
+import { ParasutAdapter, ParasutConfig, ParasutHelper } from './ParasutAdapter.js';
 
 export interface FinanceNodeConfig extends Omit<BaseNodeOptions, 'type' | 'capabilities'> {
   companyInfo: {
     name: string;
-    taxId: string;
+    taxId: string; // Vergi Kimlik Numarası
+    taxOffice?: string; // Vergi Dairesi
     currency: string;
   };
+  parasut?: ParasutConfig; // Optional Paraşüt integration
 }
 
 interface Payment {
@@ -24,6 +28,7 @@ interface Payment {
   customerId: string;
   timestamp: Date;
   transactionId?: string;
+  parasutPaymentId?: string; // Paraşüt'teki ödeme ID
 }
 
 interface Invoice {
@@ -31,20 +36,32 @@ interface Invoice {
   invoiceNumber: string;
   customerId: string;
   customerName: string;
-  amount: number;
+  customerEmail?: string;
+  customerTaxId?: string; // Müşteri VKN/TCKN
+  customerTaxOffice?: string; // Müşteri Vergi Dairesi
+  subtotal: number; // KDV hariç tutar
+  vatAmount: number; // KDV tutarı
+  withholdingAmount: number; // Stopaj tutarı
+  amount: number; // Toplam tutar (KDV dahil, stopaj hariç)
+  netAmount: number; // Net tutar (stopaj düşülmüş)
   currency: string;
   items: InvoiceItem[];
   status: 'draft' | 'sent' | 'paid' | 'overdue' | 'cancelled';
   issueDate: Date;
   dueDate: Date;
   paidDate?: Date;
+  parasutInvoiceId?: string; // Paraşüt'teki fatura ID
+  eInvoiceUuid?: string; // e-Fatura UUID (GİB)
 }
 
 interface InvoiceItem {
   description: string;
   quantity: number;
   unitPrice: number;
-  total: number;
+  vatRate: number; // KDV oranı (0, 1, 8, 10, 18, 20)
+  total: number; // KDV hariç toplam
+  vatAmount: number; // KDV tutarı
+  totalWithVat: number; // KDV dahil toplam
 }
 
 interface Transaction {
@@ -64,6 +81,24 @@ export class FinanceNode extends BaseNode {
   private invoices: Map<string, Invoice> = new Map();
   private transactions: Map<string, Transaction> = new Map();
   private invoiceCounter: number = 1000;
+  private parasutAdapter?: ParasutAdapter;
+
+  // Turkish VAT rates (KDV oranları)
+  private readonly VAT_RATES = {
+    STANDARD: 20, // %20 - Genel oran
+    REDUCED_1: 10, // %10 - İndirimli oran
+    REDUCED_2: 8,  // %8 - İndirimli oran (eski)
+    REDUCED_3: 1,  // %1 - İndirimli oran
+    ZERO: 0,       // %0 - İstisna
+  };
+
+  // Withholding tax rates (Stopaj oranları)
+  private readonly WITHHOLDING_RATES = {
+    SERVICE: 20,    // %20 - Serbest meslek hizmet stopajı
+    TRANSPORT: 10,  // %10 - Nakliye stopajı
+    RENT: 20,       // %20 - Kira stopajı
+    NONE: 0,        // Stopaj yok
+  };
 
   constructor(config: FinanceNodeConfig) {
     super({
@@ -75,30 +110,42 @@ export class FinanceNode extends BaseNode {
           'invoicing',
           'accounting',
           'tax-calculation',
+          'kdv-calculation', // KDV hesaplama
+          'stopaj-calculation', // Stopaj hesaplama
+          'e-invoice', // e-Fatura
           'financial-reporting',
           'transaction-tracking',
           'refund-processing',
           'multi-currency',
+          'parasut-integration', // Paraşüt entegrasyonu
+          'gib-compliance', // GİB uyumluluk
         ],
         services: [
           'payment-gateway',
           'invoice-generation',
+          'e-invoice-generation',
           'financial-analytics',
           'tax-compliance',
           'payment-tracking',
           'revenue-reporting',
         ],
         integrations: [
+          'parasut',
           'stripe',
           'paypal',
           'bank-apis',
-          'accounting-software',
+          'gib', // Gelir İdaresi Başkanlığı
           'tax-systems',
         ],
       },
     });
 
     this.companyInfo = config.companyInfo;
+
+    // Initialize Paraşüt if config provided
+    if (config.parasut) {
+      this.parasutAdapter = new ParasutAdapter(config.parasut);
+    }
   }
 
   /**
@@ -160,27 +207,71 @@ export class FinanceNode extends BaseNode {
   }
 
   /**
-   * Create invoice
+   * Create invoice with Turkish tax compliance (KDV & Stopaj)
    */
-  createInvoice(data: {
+  async createInvoice(data: {
     customerId: string;
     customerName: string;
-    items: InvoiceItem[];
+    customerEmail?: string;
+    customerTaxId?: string;
+    customerTaxOffice?: string;
+    items: Array<{
+      description: string;
+      quantity: number;
+      unitPrice: number;
+      vatRate?: number; // KDV oranı (varsayılan %20)
+    }>;
+    withholdingRate?: number; // Stopaj oranı (varsayılan 0)
     dueInDays?: number;
-  }): Invoice {
-    const amount = data.items.reduce((sum, item) => sum + item.total, 0);
+    sendToParasut?: boolean; // Paraşüt'e gönder
+  }): Promise<Invoice> {
     const issueDate = new Date();
     const dueDate = new Date();
     dueDate.setDate(dueDate.getDate() + (data.dueInDays || 30));
+
+    // Calculate items with VAT
+    const items: InvoiceItem[] = data.items.map(item => {
+      const vatRate = item.vatRate ?? this.VAT_RATES.STANDARD; // Varsayılan %20
+      const total = item.quantity * item.unitPrice;
+      const vatAmount = ParasutHelper.calculateVAT(total, vatRate);
+      const totalWithVat = total + vatAmount;
+
+      return {
+        description: item.description,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        vatRate,
+        total,
+        vatAmount,
+        totalWithVat,
+      };
+    });
+
+    // Calculate totals
+    const subtotal = items.reduce((sum, item) => sum + item.total, 0);
+    const vatAmount = items.reduce((sum, item) => sum + item.vatAmount, 0);
+    const amount = subtotal + vatAmount; // KDV dahil
+
+    // Calculate withholding tax (stopaj)
+    const withholdingRate = data.withholdingRate ?? this.WITHHOLDING_RATES.NONE;
+    const withholdingAmount = (subtotal * withholdingRate) / 100;
+    const netAmount = amount - withholdingAmount; // Stopaj düşülmüş
 
     const invoice: Invoice = {
       id: uuidv4(),
       invoiceNumber: `INV-${this.invoiceCounter++}`,
       customerId: data.customerId,
       customerName: data.customerName,
+      customerEmail: data.customerEmail,
+      customerTaxId: data.customerTaxId,
+      customerTaxOffice: data.customerTaxOffice,
+      subtotal,
+      vatAmount,
+      withholdingAmount,
       amount,
+      netAmount,
       currency: this.companyInfo.currency,
-      items: data.items,
+      items,
       status: 'sent',
       issueDate,
       dueDate,
@@ -188,19 +279,91 @@ export class FinanceNode extends BaseNode {
 
     this.invoices.set(invoice.id, invoice);
 
+    // Send to Paraşüt if enabled
+    if (data.sendToParasut && this.parasutAdapter) {
+      try {
+        await this.sendInvoiceToParasut(invoice);
+      } catch (error) {
+        console.error('Paraşüt invoice creation failed:', error);
+        // Continue even if Paraşüt fails - invoice is still created locally
+      }
+    }
+
     // Record as pending income
     this.recordTransaction({
       type: 'income',
       category: 'invoice',
-      amount,
+      amount: netAmount, // Use net amount (after withholding)
       currency: this.companyInfo.currency,
       description: `Invoice ${invoice.invoiceNumber} for ${data.customerName}`,
       relatedEntityId: invoice.id,
     });
 
-    this.remember('data', { invoice }, ['invoice', 'accounting'], 8);
+    this.remember('data', { invoice }, ['invoice', 'accounting', 'kdv', 'stopaj'], 9);
 
     return invoice;
+  }
+
+  /**
+   * Send invoice to Paraşüt
+   */
+  private async sendInvoiceToParasut(invoice: Invoice): Promise<void> {
+    if (!this.parasutAdapter) {
+      throw new Error('Paraşüt adapter not initialized');
+    }
+
+    // Find or create contact
+    let contact = await this.parasutAdapter.findContactByEmail(invoice.customerEmail || '');
+
+    if (!contact && invoice.customerEmail) {
+      const contactResponse = await this.parasutAdapter.createContact({
+        type: 'contacts',
+        attributes: {
+          email: invoice.customerEmail,
+          name: invoice.customerName,
+          contact_type: 'company',
+          tax_number: invoice.customerTaxId,
+          tax_office: invoice.customerTaxOffice,
+        },
+      });
+      contact = contactResponse.data;
+    }
+
+    if (!contact) {
+      throw new Error('Could not create or find contact in Paraşüt');
+    }
+
+    // Convert to Paraşüt format
+    const parasutInvoice = ParasutHelper.convertToParasutInvoice(
+      contact.id!,
+      invoice.items.map(item => ({
+        description: item.description,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        vatRate: item.vatRate,
+      })),
+      {
+        issueDate: invoice.issueDate,
+        dueDate: invoice.dueDate,
+        currency: invoice.currency as 'TRL' | 'USD' | 'EUR',
+        description: `Ada Invoice ${invoice.invoiceNumber}`,
+      }
+    );
+
+    // Create invoice in Paraşüt
+    const parasutResponse = await this.parasutAdapter.createSalesInvoice(parasutInvoice);
+
+    // Store Paraşüt invoice ID
+    invoice.parasutInvoiceId = parasutResponse.data.id;
+
+    // Send e-Invoice if email provided
+    if (invoice.customerEmail && parasutResponse.data.id) {
+      try {
+        await this.parasutAdapter.sendEInvoice(parasutResponse.data.id, invoice.customerEmail);
+      } catch (error) {
+        console.error('e-Invoice send failed:', error);
+      }
+    }
   }
 
   /**
