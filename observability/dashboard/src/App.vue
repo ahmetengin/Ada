@@ -189,6 +189,11 @@
           </div>
         </div>
       </div>
+
+      <!-- VHF Radio View -->
+      <div v-show="activeTab === 'vhf'" class="tab-content">
+        <VHFMonitor />
+      </div>
     </main>
   </div>
 </template>
@@ -196,6 +201,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import { formatDistanceToNow, format } from 'date-fns';
+import VHFMonitor from './components/VHFMonitor.vue';
 
 // API Configuration
 const API_URL = 'http://localhost:8765';
@@ -227,6 +233,7 @@ const tabs = [
   { id: 'agents', label: 'Agents', icon: '🤖' },
   { id: 'events', label: 'Events', icon: '📡' },
   { id: 'sessions', label: 'Sessions', icon: '🔗' },
+  { id: 'vhf', label: 'VHF Radio', icon: '📻' },
 ];
 
 // Computed
