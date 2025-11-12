@@ -3,7 +3,14 @@
  * Each node type has its own domain-specific capabilities
  */
 
-export type NodeType = 'ada.sea' | 'ada.marina' | 'ada.travel' | 'ada.congress';
+export type NodeType =
+  | 'ada.sea'
+  | 'ada.marina'
+  | 'ada.travel'
+  | 'ada.congress'
+  | 'ada.finance'
+  | 'ada.maintenance'
+  | 'ada.weather';
 
 export interface NodeIdentity {
   id: string;
