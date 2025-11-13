@@ -3,7 +3,7 @@
 from functools import lru_cache
 from typing import Optional
 
-from pydantic import Field, PostgresDsn, RedisDsn
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -24,12 +24,12 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     # Database
-    database_url: PostgresDsn
+    database_url: str
     database_pool_size: int = 10
     database_max_overflow: int = 20
 
     # Redis
-    redis_url: RedisDsn
+    redis_url: str
     redis_max_connections: int = 50
 
     # Qdrant

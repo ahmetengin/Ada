@@ -140,15 +140,33 @@ class EntityCloner:
         # Clone users if requested
         if clone_users and original_fleet.users:
             for idx, user in enumerate(original_fleet.users, start=1):
+                # Generate unique email for cloned user
+                email_parts = user.email.split("@")
+                if len(email_parts) == 2:
+                    new_email = f"{email_parts[0]}-clone{idx}@{email_parts[1]}"
+                else:
+                    new_email = f"{user.email}-clone{idx}"
+
                 await self.clone_entity(
                     user,
                     tenant_id,
                     clone_number=idx,
-                    overrides={"fleet_id": cloned_fleet.id},
+                    overrides={
+                        "fleet_id": cloned_fleet.id,
+                        "email": new_email,
+                    },
                 )
 
         await self.session.commit()
-        await self.session.refresh(cloned_fleet)
+
+        # Reload fleet with users relationship
+        stmt = (
+            select(Fleet)
+            .where(Fleet.id == cloned_fleet.id)
+            .options(selectinload(Fleet.users))
+        )
+        result = await self.session.execute(stmt)
+        cloned_fleet = result.scalar_one()
 
         return cloned_fleet
 
