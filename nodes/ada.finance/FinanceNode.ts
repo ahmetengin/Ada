@@ -166,6 +166,46 @@ interface PaymentBatch {
   processedAt?: Date;
 }
 
+interface LoanRepaymentScheduleItem {
+  month: number; // 1, 2, 3, etc.
+  dueDate: Date;
+  principal: number; // Anapara ödemesi
+  interest: number; // Faiz ödemesi
+  total: number; // Toplam ödeme
+  status: 'pending' | 'paid' | 'overdue';
+  paidAt?: Date;
+}
+
+interface BankLoan {
+  id: string;
+  bankName: string;
+  loanType: 'short-term' | 'long-term' | 'working-capital' | 'investment';
+  principalAmount: number; // Anapara
+  currency: string;
+  interestRate: number; // Aylık faiz oranı (%)
+  termMonths: number; // Vade (ay)
+  purpose: string; // Kredi amacı
+  disbursementDate: Date; // Kullandırım tarihi
+  maturityDate: Date; // Vade sonu
+  repaymentSchedule: LoanRepaymentScheduleItem[];
+  totalInterestCost: number; // Toplam faiz maliyeti
+  totalRepayment: number; // Toplam geri ödeme (principal + interest)
+  remainingPrincipal: number; // Kalan anapara
+  remainingInterest: number; // Kalan faiz
+  status: 'active' | 'paid-off' | 'defaulted';
+  createdAt: Date;
+  paidOffAt?: Date;
+}
+
+interface CashFlowGap {
+  period: { from: Date; to: Date };
+  expectedIncome: number;
+  expectedExpense: number;
+  gap: number; // Negative = need financing
+  recommendedLoanAmount: number;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+}
+
 export class FinanceNode extends BaseNode {
   private companyInfo: FinanceNodeConfig['companyInfo'];
   private payments: Map<string, Payment> = new Map();
@@ -175,11 +215,20 @@ export class FinanceNode extends BaseNode {
   private reminders: Map<string, PaymentReminder> = new Map(); // Ödeme hatırlatıcıları
   private usageTracking: Map<string, ContractUsageTracking> = new Map(); // Kota takibi
   private paymentBatches: Map<string, PaymentBatch> = new Map(); // Toplu ödeme planları
+  private bankLoans: Map<string, BankLoan> = new Map(); // Banka kredileri
   private invoiceCounter: number = 1000;
   private parasutAdapter?: ParasutAdapter;
 
   // Payment batch dates (3 times per month)
   private readonly PAYMENT_BATCH_DAYS = [7, 17, 27];
+
+  // Default interest rates (can be overridden by bank)
+  private readonly DEFAULT_LOAN_RATES = {
+    'short-term': 3.5,      // %3.5 aylık (kısa vadeli)
+    'long-term': 2.5,       // %2.5 aylık (uzun vadeli)
+    'working-capital': 3.0, // %3.0 aylık (işletme sermayesi)
+    'investment': 2.0,      // %2.0 aylık (yatırım kredisi)
+  };
 
   // Turkish VAT rates (KDV oranları)
   private readonly VAT_RATES = {
@@ -705,6 +754,35 @@ export class FinanceNode extends BaseNode {
     // Get payment batch summary
     this.communication.onMessage('get-payment-batch-summary', async (message) => {
       return this.getPaymentBatchSummary();
+    });
+
+    // Request bank loan
+    this.communication.onMessage('request-bank-loan', async (message) => {
+      const loan = await this.requestBankLoan(message.payload);
+      return { success: true, loan };
+    });
+
+    // Record loan repayment
+    this.communication.onMessage('record-loan-repayment', async (message) => {
+      const result = await this.recordLoanRepayment(message.payload);
+      return result;
+    });
+
+    // Analyze cash flow gap
+    this.communication.onMessage('analyze-cash-flow-gap', async (message) => {
+      const gap = this.analyzeCashFlowGap(message.payload?.days || 30);
+      return gap || { message: 'No cash flow gap detected' };
+    });
+
+    // Get active loans
+    this.communication.onMessage('get-active-loans', async (message) => {
+      return this.getActiveLoans();
+    });
+
+    // Get loan details
+    this.communication.onMessage('get-loan-details', async (message) => {
+      const loan = this.getLoanDetails(message.payload.loanId);
+      return loan || { error: 'Loan not found' };
     });
   }
 
@@ -1326,5 +1404,264 @@ export class FinanceNode extends BaseNode {
       })),
       strategy: `Payments processed on ${this.PAYMENT_BATCH_DAYS.join(', ')} of each month`,
     };
+  }
+
+  /**
+   * Request bank loan (for cash flow gaps)
+   */
+  private async requestBankLoan(data: {
+    amount: number;
+    currency: string;
+    loanType: BankLoan['loanType'];
+    termMonths: number;
+    purpose: string;
+    bankName?: string;
+    interestRate?: number; // Bank can override default rate
+  }): Promise<BankLoan> {
+    const interestRate = data.interestRate || this.DEFAULT_LOAN_RATES[data.loanType];
+
+    const now = new Date();
+    const maturityDate = new Date(now);
+    maturityDate.setMonth(maturityDate.getMonth() + data.termMonths);
+
+    // Generate repayment schedule
+    const repaymentSchedule: LoanRepaymentScheduleItem[] = [];
+    let totalInterest = 0;
+
+    for (let month = 1; month <= data.termMonths; month++) {
+      const dueDate = new Date(now);
+      dueDate.setMonth(dueDate.getMonth() + month);
+
+      // Calculate interest for this month
+      const monthlyInterest = (data.amount * interestRate) / 100;
+      totalInterest += monthlyInterest;
+
+      // Principal payment (balloon payment at end)
+      const principalPayment = month === data.termMonths ? data.amount : 0;
+
+      repaymentSchedule.push({
+        month,
+        dueDate,
+        principal: principalPayment,
+        interest: monthlyInterest,
+        total: principalPayment + monthlyInterest,
+        status: 'pending',
+      });
+    }
+
+    const loan: BankLoan = {
+      id: uuidv4(),
+      bankName: data.bankName || 'Ada Bank',
+      loanType: data.loanType,
+      principalAmount: data.amount,
+      currency: data.currency,
+      interestRate,
+      termMonths: data.termMonths,
+      purpose: data.purpose,
+      disbursementDate: now,
+      maturityDate,
+      repaymentSchedule,
+      totalInterestCost: totalInterest,
+      totalRepayment: data.amount + totalInterest,
+      remainingPrincipal: data.amount,
+      remainingInterest: totalInterest,
+      status: 'active',
+      createdAt: now,
+    };
+
+    this.bankLoans.set(loan.id, loan);
+
+    // Record loan disbursement as income transaction
+    const transaction: Transaction = {
+      id: uuidv4(),
+      type: 'income',
+      category: 'bank-loan',
+      amount: data.amount,
+      currency: data.currency,
+      description: `Bank loan: ${data.purpose}`,
+      date: now,
+    };
+
+    this.transactions.set(transaction.id, transaction);
+
+    this.remember('data', { loan }, ['bank-loan', 'financing'], 9);
+
+    this.logEvent('Bank loan created', {
+      loanId: loan.id,
+      amount: data.amount,
+      termMonths: data.termMonths,
+      totalCost: totalInterest,
+    });
+
+    return loan;
+  }
+
+  /**
+   * Record loan repayment
+   */
+  private async recordLoanRepayment(data: {
+    loanId: string;
+    month: number;
+    paymentDate: Date;
+  }): Promise<any> {
+    const loan = this.bankLoans.get(data.loanId);
+
+    if (!loan) {
+      return { success: false, error: 'Loan not found' };
+    }
+
+    const scheduleItem = loan.repaymentSchedule.find(item => item.month === data.month);
+
+    if (!scheduleItem) {
+      return { success: false, error: 'Invalid month' };
+    }
+
+    if (scheduleItem.status === 'paid') {
+      return { success: false, error: 'Already paid' };
+    }
+
+    // Mark as paid
+    scheduleItem.status = 'paid';
+    scheduleItem.paidAt = data.paymentDate;
+
+    // Update remaining amounts
+    loan.remainingPrincipal -= scheduleItem.principal;
+    loan.remainingInterest -= scheduleItem.interest;
+
+    // Check if fully paid off
+    if (loan.remainingPrincipal <= 0) {
+      loan.status = 'paid-off';
+      loan.paidOffAt = data.paymentDate;
+    }
+
+    // Record transaction
+    const transaction: Transaction = {
+      id: uuidv4(),
+      type: 'expense',
+      category: 'loan-repayment',
+      amount: scheduleItem.total,
+      currency: loan.currency,
+      description: `Loan repayment: ${loan.bankName} - Month ${data.month} (Principal: ${scheduleItem.principal}, Interest: ${scheduleItem.interest})`,
+      date: data.paymentDate,
+    };
+
+    this.transactions.set(transaction.id, transaction);
+
+    this.remember('data', { loanId: data.loanId, payment: scheduleItem }, ['loan-repayment'], 9);
+
+    this.logEvent('Loan repayment recorded', {
+      loanId: data.loanId,
+      month: data.month,
+      amount: scheduleItem.total,
+      remainingPrincipal: loan.remainingPrincipal,
+    });
+
+    return {
+      success: true,
+      loan,
+      payment: scheduleItem,
+      remainingPrincipal: loan.remainingPrincipal,
+      remainingInterest: loan.remainingInterest,
+      status: loan.status,
+    };
+  }
+
+  /**
+   * Analyze cash flow gap and recommend loan
+   */
+  private analyzeCashFlowGap(days: number = 30): CashFlowGap | null {
+    const forecast = this.getCashFlowForecast(days);
+
+    if (forecast.summary.netCashFlow >= 0) {
+      return null; // No gap
+    }
+
+    const gap = Math.abs(forecast.summary.netCashFlow);
+
+    // Add 20% buffer for safety
+    const recommendedLoanAmount = Math.round(gap * 1.2);
+
+    // Determine severity
+    let severity: CashFlowGap['severity'];
+    if (gap < 10000) {
+      severity = 'low';
+    } else if (gap < 50000) {
+      severity = 'medium';
+    } else if (gap < 100000) {
+      severity = 'high';
+    } else {
+      severity = 'critical';
+    }
+
+    return {
+      period: forecast.period,
+      expectedIncome: forecast.summary.expectedIncome,
+      expectedExpense: forecast.summary.expectedExpense,
+      gap,
+      recommendedLoanAmount,
+      severity,
+    };
+  }
+
+  /**
+   * Get active loans summary
+   */
+  private getActiveLoans(): any {
+    const activeLoans = Array.from(this.bankLoans.values())
+      .filter(loan => loan.status === 'active');
+
+    const totalPrincipal = activeLoans.reduce((sum, loan) => sum + loan.remainingPrincipal, 0);
+    const totalInterest = activeLoans.reduce((sum, loan) => sum + loan.remainingInterest, 0);
+
+    // Get upcoming loan payments (next 30 days)
+    const today = new Date();
+    const thirtyDaysFromNow = new Date();
+    thirtyDaysFromNow.setDate(today.getDate() + 30);
+
+    const upcomingPayments: any[] = [];
+    for (const loan of activeLoans) {
+      for (const item of loan.repaymentSchedule) {
+        if (item.status === 'pending' && item.dueDate <= thirtyDaysFromNow) {
+          upcomingPayments.push({
+            loanId: loan.id,
+            bankName: loan.bankName,
+            month: item.month,
+            dueDate: item.dueDate,
+            principal: item.principal,
+            interest: item.interest,
+            total: item.total,
+          });
+        }
+      }
+    }
+
+    upcomingPayments.sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
+
+    return {
+      totalActiveLoans: activeLoans.length,
+      totalDebt: {
+        principal: totalPrincipal,
+        interest: totalInterest,
+        total: totalPrincipal + totalInterest,
+      },
+      upcomingPayments,
+      loans: activeLoans.map(loan => ({
+        id: loan.id,
+        bankName: loan.bankName,
+        loanType: loan.loanType,
+        principalAmount: loan.principalAmount,
+        remainingPrincipal: loan.remainingPrincipal,
+        remainingInterest: loan.remainingInterest,
+        interestRate: loan.interestRate,
+        maturityDate: loan.maturityDate,
+      })),
+    };
+  }
+
+  /**
+   * Get loan details
+   */
+  private getLoanDetails(loanId: string): BankLoan | null {
+    return this.bankLoans.get(loanId) || null;
   }
 }
