@@ -67,9 +67,18 @@ export interface NMEA2000Data {
   timestamp: Date;
 }
 
+/**
+ * VesselData - DEPRECATED
+ * Use VesselLegalIdentity from nodes/ada.sea/types/AISTypes.ts instead
+ *
+ * This interface is kept for backward compatibility but should not be used for new code.
+ * All vessels MUST have valid MMSI and IMO numbers for legal maritime operations.
+ */
 export interface VesselData {
   name: string;
+  /** @deprecated MMSI is now REQUIRED - use VesselLegalIdentity */
   imo?: string;
+  /** @deprecated IMO is now REQUIRED - use VesselLegalIdentity */
   mmsi?: string;
   length: number;
   beam: number;
