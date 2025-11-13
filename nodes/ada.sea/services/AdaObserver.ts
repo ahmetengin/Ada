@@ -516,8 +516,7 @@ export class AdaObserver extends EventEmitter {
 
     this.emit('away:notification', notification);
 
-    // TODO: Integrate with SMS/Email service
-    console.log('📧 Away Mode Notification:', notification);
+    // Notification is handled by SeaNode's NotificationService
   }
 
   /**
@@ -545,7 +544,29 @@ export class AdaObserver extends EventEmitter {
    * Helper: Check if engine is running (from NMEA data)
    */
   private isEngineRunning(): boolean {
-    // TODO: Implement based on NMEA engine RPM data
+    if (!this.navigationData) {
+      return false;
+    }
+
+    // Check for engine RPM data (NMEA PGN 127488 - Engine Parameters, Rapid Update)
+    // If RPM > 500, engine is considered running
+    const engineRPM = (this.navigationData as any).engineRPM;
+    if (engineRPM !== undefined && engineRPM > 500) {
+      return true;
+    }
+
+    // Alternative: Check if SOG > 2 knots while heading is relatively stable
+    // This could indicate motoring (not perfect but useful fallback)
+    const sog = this.navigationData.speed?.overGround;
+    if (sog && sog > 2) {
+      // If we have recent data points, check if we're making way
+      if (this.dataBuffer.length > 5) {
+        const recentSpeeds = this.dataBuffer.slice(-5).map((d: any) => d.speed?.overGround || 0);
+        const avgSpeed = recentSpeeds.reduce((a, b) => a + b, 0) / recentSpeeds.length;
+        return avgSpeed > 2;
+      }
+    }
+
     return false;
   }
 
@@ -553,7 +574,40 @@ export class AdaObserver extends EventEmitter {
    * Helper: Check if sails are up
    */
   private areSailsUp(): boolean {
-    // TODO: Implement based on sail sensors or manual input
+    if (!this.navigationData) {
+      return false;
+    }
+
+    // Check for sail sensor data if available
+    const sailState = (this.navigationData as any).sailState;
+    if (sailState !== undefined) {
+      return sailState === 'deployed' || sailState === 'up';
+    }
+
+    // Heuristic: If moving under wind conditions without engine
+    // If SOG > 2 knots, engine not running, and wind speed > 5 knots
+    const sog = this.navigationData.speed?.overGround;
+    const windSpeed = this.navigationData.wind?.trueSpeed;
+
+    if (sog && sog > 2 && !this.isEngineRunning()) {
+      // Likely sailing if there's wind
+      if (windSpeed && windSpeed > 5) {
+        return true;
+      }
+
+      // Also check if there's apparent wind (sailing generates apparent wind)
+      const apparentWindSpeed = (this.navigationData as any).apparentWindSpeed;
+      if (apparentWindSpeed && apparentWindSpeed > 8) {
+        return true;
+      }
+    }
+
+    // Check heel angle - sailing yachts heel when sails are up
+    const heelAngle = (this.navigationData as any).heelAngle;
+    if (heelAngle !== undefined && Math.abs(heelAngle) > 5) {
+      return true; // Likely sailing if heeling more than 5 degrees
+    }
+
     return false;
   }
 

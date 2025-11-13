@@ -148,17 +148,17 @@ Sunday:    Brunch & Live Music (11:00-15:00)
 
 **The industry's most advanced maritime AI** - Not just voice commands, but true intelligence.
 
-### What Makes Ada Different
+### What Makes Ada Unique
 
-| Feature | Zora 3.0 | Aquamap | Garmin | **Ada Observer** |
-|---------|----------|---------|--------|------------------|
-| Conversational AI | Basic | No | Limited | ✓ **Full conversation** |
-| Context Awareness | No | No | No | ✓ **Vessel, weather, nav data** |
-| Fleet Learning | No | No | No | ✓ **SEAL system** |
-| Proactive Suggestions | No | No | No | ✓ **Intelligent recommendations** |
-| Multilingual | EN | EN | EN | ✓ **TR/EN/GR** |
-| Emergency Protocol | Basic | No | Limited | ✓ **Full maritime protocol** |
-| Privacy Control | Cloud | Cloud | Cloud | ✓ **Captain decides everything** |
+**Ada Observer** delivers comprehensive maritime intelligence:
+
+- ✓ **Full Conversational AI** - Natural dialogue, understands context and intent
+- ✓ **Complete Context Awareness** - Integrates vessel, weather, and navigation data
+- ✓ **Fleet-Wide Learning** - SEAL system enables shared knowledge across vessels
+- ✓ **Proactive Intelligence** - Offers intelligent recommendations before you ask
+- ✓ **Multilingual Support** - Turkish, English, and Greek
+- ✓ **Full Maritime Emergency Protocol** - Complete MAYDAY and distress procedures
+- ✓ **Captain-Controlled Privacy** - You decide what gets shared, always
 
 ### Real Conversations
 
@@ -283,17 +283,17 @@ Data sent: vessel_name, loa, berth, current_position_only
 Captain: VOICE_CONFIRMED (audio fingerprint saved)
 ```
 
-### Privacy Comparison
+### Ada's Privacy Guarantees
 
-| Feature | Zora | Garmin | Raymarine | **Ada** |
-|---------|------|--------|-----------|---------|
-| Cloud by Default | ✓ Yes | ✓ Yes | ✓ Yes | ✗ **No** |
-| Auto-Sharing | ✓ Yes | Limited | Limited | ✗ **Never** |
-| Captain Control | Limited | Limited | Limited | ✓ **Total** |
-| Audit Trail | ✗ No | ✗ No | ✗ No | ✓ **Complete** |
-| Zero-Knowledge | ✗ No | ✗ No | ✗ No | ✓ **Yes** |
-| KVKK Compliant | ✗ No | ✗ No | ✗ No | ✓ **Yes** |
-| Voice Consent | ✗ No | ✗ No | ✗ No | ✓ **Yes** |
+**Ada** is built on absolute privacy principles:
+
+- ✗ **No Cloud by Default** - All data stays on-vessel unless you explicitly allow
+- ✗ **No Auto-Sharing** - Never shares anything automatically
+- ✓ **Total Captain Control** - Every data transfer requires your approval
+- ✓ **Complete Audit Trail** - Full transparency on all data operations
+- ✓ **Zero-Knowledge Backup** - Optional encrypted cloud backup
+- ✓ **KVKK & GDPR Compliant** - Turkish and EU data protection laws
+- ✓ **Voice Consent** - Approve or deny requests by speaking
 
 See [PRIVACY.md](PRIVACY.md) for complete architecture.
 
