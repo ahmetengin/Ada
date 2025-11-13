@@ -15,6 +15,7 @@ import { VHFRadioService } from './services/VHFRadioService.js';
 import { VHFMessageClassifier } from './services/VHFMessageClassifier.js';
 import { VHFRaceMode } from './services/VHFRaceMode.js';
 import { AdaObserver } from './services/AdaObserver.js';
+import { NotificationService } from './services/NotificationService.js';
 
 export interface SeaNodeConfig extends Omit<BaseNodeOptions, 'type' | 'capabilities'> {
   vessel?: VesselData;
@@ -35,6 +36,7 @@ export class SeaNode extends BaseNode {
   private vhfMessageClassifier: VHFMessageClassifier;
   private vhfRaceMode?: VHFRaceMode;
   private observer: AdaObserver; // Intelligent vessel monitoring
+  private notificationService: NotificationService;
 
   // State
   private currentVoyage?: VoyagePlan;
@@ -120,6 +122,13 @@ export class SeaNode extends BaseNode {
       bowRollerHeight: 1.5, // Default 1.5m - should be configurable
       enableAutoLogging: true,
       enableStateDetection: true,
+    });
+
+    // Initialize Notification Service
+    this.notificationService = new NotificationService({
+      enabled: true,
+      emailProvider: 'smtp',
+      smsProvider: 'sms-gateway',
     });
 
     // Setup observer event handlers
@@ -1021,9 +1030,24 @@ export class SeaNode extends BaseNode {
     });
 
     // Away mode notifications
-    this.observer.on('away:notification', (notification) => {
+    this.observer.on('away:notification', async (notification) => {
       this.logEvent('Away mode notification', notification);
-      // TODO: Send actual SMS/Email
+
+      // Send SMS/Email to vessel owner
+      await this.notificationService.sendUrgentNotification(
+        {
+          name: 'Vessel Owner',
+          email: 'owner@example.com', // Should be configured per vessel
+          phone: '+90-555-XXX-XXXX', // Should be configured per vessel
+        },
+        {
+          subject: `⚠️ ${notification.type} Alert - ${notification.vesselName}`,
+          body: notification.message,
+          priority: 'urgent',
+          timestamp: notification.timestamp,
+        }
+      );
+
       this.emit('observer:away-notification', notification);
     });
   }

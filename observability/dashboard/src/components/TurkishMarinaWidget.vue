@@ -237,9 +237,23 @@ function getServiceLabel(service: string): string {
 }
 
 function tuneVHF(channel: number): void {
-  // Emit event to tune VHF radio
-  console.log(`Tuning VHF to channel ${channel}`);
-  // TODO: Integrate with VHF radio service
+  // Emit event to tune VHF radio to parent component or VHF service
+  // In production, this would communicate with actual VHF hardware via WebSocket or API
+  const event = new CustomEvent('vhf:tune', {
+    detail: {
+      channel,
+      timestamp: new Date().toISOString(),
+      source: 'marina-widget',
+    },
+  });
+  window.dispatchEvent(event);
+
+  // Could also call VHF service API:
+  // fetch(`${API_URL}/api/vhf/tune`, {
+  //   method: 'POST',
+  //   headers: { 'Content-Type': 'application/json' },
+  //   body: JSON.stringify({ channel })
+  // });
 }
 
 function selectMarina(marina: any): void {
