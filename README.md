@@ -4,6 +4,26 @@
 
 ## 🚀 Key Features
 
+### VHF Marine Radio Monitoring (Ada.Sea)
+
+Ada.Sea includes **comprehensive VHF marine radio monitoring** with Software-Defined Radio (SDR), Voice Activity Detection (VAD), and Speech-to-Text (STT) transcription:
+
+- **Real-time VHF Scanning** - Monitor marine VHF channels (156-162 MHz) using RTL-SDR
+- **Emergency Detection** - Automatic detection of Ch 16 distress calls (MAYDAY, PAN PAN, SECURITE)
+- **Voice Transcription** - Speech-to-text for radio communications (English/Turkish)
+- **Geographic Auto-Tuning** - Location-based channel prioritization (Istanbul, Aegean, Mediterranean)
+- **Race Mode** - Specialized monitoring for sailing regattas with start sequence detection
+- **Message Classification** - Intelligent categorization (emergency, marina, intership, safety)
+- **Ada Observer Dashboard** - Real-time VHF monitoring interface
+
+**Key Channels (Turkey)**:
+- **Ch 16** (156.800 MHz): Emergency - mandatory monitoring
+- **Ch 73** (156.675 MHz): Marina standard (~90% of Turkish marinas)
+- **Ch 72** (156.625 MHz): Istanbul marinas, intership
+- **Ch 6** (156.300 MHz): Primary ship-to-ship
+
+See [docs/VHF_IMPLEMENTATION.md](docs/VHF_IMPLEMENTATION.md) for detailed documentation.
+
 ### SEAL (Self-Evolving Agent Loop)
 
 Ada implements a comprehensive **SEAL system** for autonomous agent learning and evolution:
@@ -87,6 +107,13 @@ See [observability/README.md](observability/README.md) for detailed documentatio
 - **Graphiti** - Knowledge graph construction
 - **TabPFN** - Tabular predictions with neural networks
 
+### Ada.Sea VHF Radio Stack
+- **RTL-SDR** - Software-Defined Radio for VHF reception
+- **WebRTC VAD** - Voice Activity Detection
+- **OpenAI Whisper** - Speech-to-Text transcription
+- **FFmpeg / SoX** - Audio processing and enhancement
+- **Vue 3** - Ada Observer VHF monitoring dashboard
+
 ## 📦 Installation
 
 ### Prerequisites
@@ -130,6 +157,67 @@ See [observability/README.md](observability/README.md) for detailed documentatio
    ```
 
 ## 💡 Usage Examples
+
+### Using VHF Radio Monitoring
+
+```typescript
+import { SeaNode } from './nodes/ada.sea/SeaNode';
+
+// Initialize Ada.Sea node
+const ada = new SeaNode({
+  name: 'Phisedelia',
+  vessel: {
+    name: 'S/Y Phisedelia',
+    length: 15.5,
+    beam: 4.2,
+    draft: 2.1,
+    type: 'sailing-yacht',
+  },
+});
+
+await ada.initialize();
+
+// Start VHF scanner
+await ada.processTask({
+  type: 'vhf-radio',
+  data: { action: 'start-scanner' }
+});
+
+// Listen for emergency alerts
+ada.on('alert', (alert) => {
+  if (alert.source === 'vhf-radio' && alert.severity === 'critical') {
+    console.log('🚨 EMERGENCY:', alert.message);
+    // Take action: notify crew, display alert
+  }
+});
+
+// Activate race mode for regatta
+await ada.processTask({
+  type: 'vhf-radio',
+  data: {
+    action: 'activate-race-mode',
+    raceName: 'Phisedelia Cup 2025',
+    committeeChannel: 73,
+    fleetChannel: 6,
+    startTime: '2025-06-15T11:00:00Z',
+  }
+});
+
+// Listen for race start
+ada.on('race:start', (data) => {
+  console.log('🏁 GO! GO! GO!');
+  // Start race timer, notify crew
+});
+
+// Get VHF statistics
+const stats = await ada.processTask({
+  type: 'vhf-radio',
+  data: { action: 'get-statistics' }
+});
+
+console.log(`Transmissions: ${stats.transmissionsDetected}`);
+console.log(`Emergency calls: ${stats.emergencyCallsDetected}`);
+```
 
 ### Using SEAL (Self-Evolving Agent Loop)
 
@@ -450,6 +538,17 @@ See [observability/README.md](observability/README.md) for full documentation.
 - [x] Reflection and evolution cycles
 - [x] Multi-tenant architecture
 - [x] Tenant-scoped cloning system
+- [x] Multi-agent observability dashboard
+- [x] **VHF Marine Radio Monitoring (Ada.Sea)**
+  - [x] Real-time VHF scanner with RTL-SDR
+  - [x] Voice Activity Detection (VAD)
+  - [x] Speech-to-Text transcription (Whisper)
+  - [x] Emergency detection (Ch 16, MAYDAY keywords)
+  - [x] Geographic channel auto-tuning (Turkey regions)
+  - [x] Race mode for sailing regattas
+  - [x] Message classification and entity extraction
+  - [x] Ada Observer VHF monitoring dashboard
+  - [x] Comprehensive test suite (120+ test cases)
 
 ### In Progress 🚧
 - [ ] Enhanced SEAL with vector embeddings (Qdrant/FAISS)
