@@ -117,6 +117,55 @@ interface PaymentReminder {
   sentAt?: Date;
 }
 
+interface ServiceQuota {
+  serviceType: string; // 'transfers', 'meals', 'rooms', etc.
+  total: number;
+  used: number;
+  remaining: number;
+  unitPrice: number; // Price per unit if quota exceeded
+  resetPeriod: 'monthly' | 'yearly' | 'contract-term';
+}
+
+interface UsageRecord {
+  id: string;
+  contractId: string;
+  serviceType: string;
+  quantity: number;
+  unitPrice: number;
+  totalCost: number;
+  usedAt: Date;
+  billedTo: string; // Which node/customer this was for
+  invoiceId?: string;
+  notes?: string;
+}
+
+interface ContractUsageTracking {
+  contractId: string;
+  supplier: string;
+  period: { month: number; year: number };
+  quotas: Map<string, ServiceQuota>; // service type → quota
+  usageRecords: UsageRecord[];
+  totalBilled: number;
+  totalQuotaValue: number;
+  overage: number; // Amount over quota
+}
+
+interface PaymentBatch {
+  id: string;
+  scheduledDate: Date; // 7th, 17th, or 27th of month
+  suppliers: string[];
+  totalAmount: number;
+  currency: string;
+  payments: Array<{
+    payableId: string;
+    supplier: string;
+    amount: number;
+    scheduleItemIds: string[];
+  }>;
+  status: 'scheduled' | 'processing' | 'completed' | 'failed';
+  processedAt?: Date;
+}
+
 export class FinanceNode extends BaseNode {
   private companyInfo: FinanceNodeConfig['companyInfo'];
   private payments: Map<string, Payment> = new Map();
@@ -124,8 +173,13 @@ export class FinanceNode extends BaseNode {
   private transactions: Map<string, Transaction> = new Map();
   private payables: Map<string, PayableContract> = new Map(); // Borçlar
   private reminders: Map<string, PaymentReminder> = new Map(); // Ödeme hatırlatıcıları
+  private usageTracking: Map<string, ContractUsageTracking> = new Map(); // Kota takibi
+  private paymentBatches: Map<string, PaymentBatch> = new Map(); // Toplu ödeme planları
   private invoiceCounter: number = 1000;
   private parasutAdapter?: ParasutAdapter;
+
+  // Payment batch dates (3 times per month)
+  private readonly PAYMENT_BATCH_DAYS = [7, 17, 27];
 
   // Turkish VAT rates (KDV oranları)
   private readonly VAT_RATES = {
@@ -616,6 +670,42 @@ export class FinanceNode extends BaseNode {
     this.communication.onMessage('get-cash-flow-forecast', async (message) => {
       return this.getCashFlowForecast(message.payload?.days || 30);
     });
+
+    // Initialize usage tracking for a contract
+    this.communication.onMessage('init-usage-tracking', async (message) => {
+      const { contractId, supplier, quotas } = message.payload;
+      this.initializeUsageTracking(contractId, supplier, quotas);
+      return { success: true, message: 'Usage tracking initialized' };
+    });
+
+    // Record service usage
+    this.communication.onMessage('record-usage', async (message) => {
+      const result = await this.recordUsage(message.payload);
+      return result;
+    });
+
+    // Get usage summary
+    this.communication.onMessage('get-usage-summary', async (message) => {
+      const { contractId, month, year } = message.payload;
+      return this.getUsageSummary(contractId, month, year);
+    });
+
+    // Schedule monthly payment batches
+    this.communication.onMessage('schedule-payment-batches', async (message) => {
+      this.scheduleMonthlyPaymentBatches();
+      return { success: true, message: 'Payment batches scheduled' };
+    });
+
+    // Process payment batch
+    this.communication.onMessage('process-payment-batch', async (message) => {
+      const result = await this.processPaymentBatch(message.payload.batchId);
+      return result;
+    });
+
+    // Get payment batch summary
+    this.communication.onMessage('get-payment-batch-summary', async (message) => {
+      return this.getPaymentBatchSummary();
+    });
   }
 
   /**
@@ -898,6 +988,343 @@ export class FinanceNode extends BaseNode {
         netCashFlow,
         alert: netCashFlow < 0 ? '⚠️ Negative cash flow forecast!' : '✓ Positive cash flow',
       },
+    };
+  }
+
+  /**
+   * Initialize usage tracking for a contract with quotas
+   */
+  private initializeUsageTracking(
+    contractId: string,
+    supplier: string,
+    quotas: Array<{ serviceType: string; total: number; unitPrice: number; resetPeriod: 'monthly' | 'yearly' | 'contract-term' }>
+  ): void {
+    const now = new Date();
+    const trackingKey = `${contractId}-${now.getFullYear()}-${now.getMonth() + 1}`;
+
+    const quotaMap = new Map<string, ServiceQuota>();
+    quotas.forEach(q => {
+      quotaMap.set(q.serviceType, {
+        serviceType: q.serviceType,
+        total: q.total,
+        used: 0,
+        remaining: q.total,
+        unitPrice: q.unitPrice,
+        resetPeriod: q.resetPeriod,
+      });
+    });
+
+    const tracking: ContractUsageTracking = {
+      contractId,
+      supplier,
+      period: { month: now.getMonth() + 1, year: now.getFullYear() },
+      quotas: quotaMap,
+      usageRecords: [],
+      totalBilled: 0,
+      totalQuotaValue: quotas.reduce((sum, q) => sum + (q.total * q.unitPrice), 0),
+      overage: 0,
+    };
+
+    this.usageTracking.set(trackingKey, tracking);
+
+    this.logEvent('Usage tracking initialized', {
+      contractId,
+      supplier,
+      quotas: quotas.length,
+    });
+  }
+
+  /**
+   * Record service usage against a contract quota
+   */
+  private async recordUsage(data: {
+    contractId: string;
+    serviceType: string;
+    quantity: number;
+    billedTo: string;
+    notes?: string;
+  }): Promise<any> {
+    const now = new Date();
+    const trackingKey = `${data.contractId}-${now.getFullYear()}-${now.getMonth() + 1}`;
+
+    let tracking = this.usageTracking.get(trackingKey);
+
+    if (!tracking) {
+      return { success: false, error: 'No usage tracking found for this contract/period' };
+    }
+
+    const quota = tracking.quotas.get(data.serviceType);
+
+    if (!quota) {
+      return { success: false, error: `No quota found for service type: ${data.serviceType}` };
+    }
+
+    // Check if usage exceeds quota
+    const willExceedQuota = quota.used + data.quantity > quota.total;
+    const quantityWithinQuota = willExceedQuota ? quota.remaining : data.quantity;
+    const overage = willExceedQuota ? (quota.used + data.quantity - quota.total) : 0;
+
+    // Calculate cost
+    const totalCost = data.quantity * quota.unitPrice;
+
+    // Create usage record
+    const usageRecord: UsageRecord = {
+      id: uuidv4(),
+      contractId: data.contractId,
+      serviceType: data.serviceType,
+      quantity: data.quantity,
+      unitPrice: quota.unitPrice,
+      totalCost,
+      usedAt: now,
+      billedTo: data.billedTo,
+      notes: data.notes,
+    };
+
+    tracking.usageRecords.push(usageRecord);
+    tracking.totalBilled += totalCost;
+
+    // Update quota
+    quota.used += data.quantity;
+    quota.remaining = Math.max(0, quota.total - quota.used);
+
+    // Update overage
+    if (overage > 0) {
+      tracking.overage += overage * quota.unitPrice;
+    }
+
+    this.remember('data', { usage: usageRecord, quota }, ['usage', 'quota'], 7);
+
+    this.logEvent('Usage recorded', {
+      contractId: data.contractId,
+      serviceType: data.serviceType,
+      quantity: data.quantity,
+      withinQuota: !willExceedQuota,
+      overage,
+    });
+
+    // Emit alert if quota exceeded
+    if (willExceedQuota) {
+      this.emit('quota-exceeded', {
+        contractId: data.contractId,
+        supplier: tracking.supplier,
+        serviceType: data.serviceType,
+        quotaTotal: quota.total,
+        used: quota.used,
+        overage,
+      });
+    }
+
+    return {
+      success: true,
+      usageRecord,
+      quota: {
+        total: quota.total,
+        used: quota.used,
+        remaining: quota.remaining,
+      },
+      alert: willExceedQuota ? `⚠️ Quota exceeded! Over by ${overage} units` : null,
+    };
+  }
+
+  /**
+   * Get usage summary for a contract
+   */
+  private getUsageSummary(contractId: string, month?: number, year?: number): any {
+    const now = new Date();
+    const targetMonth = month || now.getMonth() + 1;
+    const targetYear = year || now.getFullYear();
+    const trackingKey = `${contractId}-${targetYear}-${targetMonth}`;
+
+    const tracking = this.usageTracking.get(trackingKey);
+
+    if (!tracking) {
+      return { error: 'No usage tracking found for this contract/period' };
+    }
+
+    const quotaSummary: any[] = [];
+    tracking.quotas.forEach((quota, serviceType) => {
+      quotaSummary.push({
+        serviceType,
+        total: quota.total,
+        used: quota.used,
+        remaining: quota.remaining,
+        utilizationRate: Math.round((quota.used / quota.total) * 100),
+        unitPrice: quota.unitPrice,
+        valueUsed: quota.used * quota.unitPrice,
+      });
+    });
+
+    return {
+      contractId: tracking.contractId,
+      supplier: tracking.supplier,
+      period: tracking.period,
+      quotas: quotaSummary,
+      totalUsageRecords: tracking.usageRecords.length,
+      totalBilled: tracking.totalBilled,
+      totalQuotaValue: tracking.totalQuotaValue,
+      overage: tracking.overage,
+      utilizationRate: Math.round((tracking.totalBilled / tracking.totalQuotaValue) * 100),
+    };
+  }
+
+  /**
+   * Schedule payment batches for the month (7th, 17th, 27th)
+   */
+  private scheduleMonthlyPaymentBatches(): void {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    for (const day of this.PAYMENT_BATCH_DAYS) {
+      const batchDate = new Date(currentYear, currentMonth, day);
+
+      // Skip if date has passed
+      if (batchDate < now) continue;
+
+      // Collect all pending payments due before or on this batch date
+      const batchPayments: PaymentBatch['payments'] = [];
+      const suppliers = new Set<string>();
+      let totalAmount = 0;
+
+      for (const payable of this.payables.values()) {
+        if (payable.status !== 'active') continue;
+
+        for (const scheduleItem of payable.paymentSchedule) {
+          if (scheduleItem.status === 'pending' && scheduleItem.date <= batchDate) {
+            batchPayments.push({
+              payableId: payable.id,
+              supplier: payable.supplier.name,
+              amount: scheduleItem.amount,
+              scheduleItemIds: [scheduleItem.description], // Using description as ID for now
+            });
+
+            suppliers.add(payable.supplier.name);
+            totalAmount += scheduleItem.amount;
+          }
+        }
+      }
+
+      if (batchPayments.length === 0) continue;
+
+      const batch: PaymentBatch = {
+        id: uuidv4(),
+        scheduledDate: batchDate,
+        suppliers: Array.from(suppliers),
+        totalAmount,
+        currency: this.companyInfo.currency,
+        payments: batchPayments,
+        status: 'scheduled',
+      };
+
+      this.paymentBatches.set(batch.id, batch);
+
+      this.logEvent('Payment batch scheduled', {
+        batchId: batch.id,
+        date: batchDate,
+        suppliers: batch.suppliers.length,
+        totalAmount,
+      });
+    }
+  }
+
+  /**
+   * Process payment batch on scheduled date
+   */
+  private async processPaymentBatch(batchId: string): Promise<any> {
+    const batch = this.paymentBatches.get(batchId);
+
+    if (!batch) {
+      return { success: false, error: 'Batch not found' };
+    }
+
+    if (batch.status !== 'scheduled') {
+      return { success: false, error: `Batch already ${batch.status}` };
+    }
+
+    batch.status = 'processing';
+
+    const results: any[] = [];
+
+    for (const payment of batch.payments) {
+      try {
+        const result = await this.recordPaymentMade({
+          payableId: payment.payableId,
+          amount: payment.amount,
+          paymentDate: batch.scheduledDate,
+        });
+
+        results.push({
+          supplier: payment.supplier,
+          amount: payment.amount,
+          success: result.success,
+        });
+      } catch (error: any) {
+        results.push({
+          supplier: payment.supplier,
+          amount: payment.amount,
+          success: false,
+          error: error.message,
+        });
+      }
+    }
+
+    const allSuccessful = results.every(r => r.success);
+    batch.status = allSuccessful ? 'completed' : 'failed';
+    batch.processedAt = new Date();
+
+    this.logEvent('Payment batch processed', {
+      batchId,
+      totalPayments: batch.payments.length,
+      successful: results.filter(r => r.success).length,
+      failed: results.filter(r => !r.success).length,
+    });
+
+    return {
+      success: allSuccessful,
+      batch,
+      results,
+    };
+  }
+
+  /**
+   * Get next payment batch date
+   */
+  private getNextPaymentBatchDate(): Date {
+    const now = new Date();
+    const currentDay = now.getDate();
+
+    // Find next batch day
+    const nextBatchDay = this.PAYMENT_BATCH_DAYS.find(day => day > currentDay);
+
+    if (nextBatchDay) {
+      // Next batch is this month
+      return new Date(now.getFullYear(), now.getMonth(), nextBatchDay);
+    } else {
+      // Next batch is next month (7th)
+      return new Date(now.getFullYear(), now.getMonth() + 1, this.PAYMENT_BATCH_DAYS[0]);
+    }
+  }
+
+  /**
+   * Get payment batch summary
+   */
+  private getPaymentBatchSummary(): any {
+    const scheduled = Array.from(this.paymentBatches.values())
+      .filter(b => b.status === 'scheduled');
+
+    const nextBatchDate = this.getNextPaymentBatchDate();
+
+    return {
+      nextBatchDate,
+      scheduledBatches: scheduled.length,
+      batches: scheduled.map(b => ({
+        id: b.id,
+        date: b.scheduledDate,
+        suppliers: b.suppliers.length,
+        payments: b.payments.length,
+        totalAmount: b.totalAmount,
+      })),
+      strategy: `Payments processed on ${this.PAYMENT_BATCH_DAYS.join(', ')} of each month`,
     };
   }
 }
