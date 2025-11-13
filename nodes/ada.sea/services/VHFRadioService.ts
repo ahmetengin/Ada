@@ -6,8 +6,10 @@
  * - Voice Activity Detection (VAD)
  * - Speech-to-Text (STT) transcription
  * - Geographic-aware channel prioritization
- * - Emergency channel monitoring (Ch 16)
+ * - Emergency channel monitoring (Ch 16 - MAYDAY/PAN-PAN)
+ * - Operations channel monitoring (Ch 72 - Marina/Port Operations)
  * - Channel classification
+ * - Multi-language support (TR/EN/GR) for Channel 72
  *
  * Hardware requirements:
  * - RTL-SDR dongle (R820T/R820T2 tuner recommended)
@@ -17,6 +19,12 @@
  * - rtl_fm or rtl_sdr for SDR control
  * - sox for audio processing
  * - Python VAD/STT backend
+ *
+ * Channel Strategy (from ada-marina-wim):
+ * - Ch 16: Emergency (MAYDAY, PAN-PAN, SECURITE) - Always monitored
+ * - Ch 72: Marina operations (berth requests, services) - Turkish/English/Greek
+ * - Ch 9: Ship-to-ship communication
+ * - Ch 69: Non-commercial vessels
  */
 
 import { EventEmitter } from 'events';
