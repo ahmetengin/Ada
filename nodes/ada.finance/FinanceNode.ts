@@ -75,11 +75,55 @@ interface Transaction {
   relatedNodeId?: string;
 }
 
+interface PayableContract {
+  id: string;
+  contractId: string; // From ada.legal
+  contractType: string;
+  supplier: {
+    name: string;
+    taxId?: string;
+    bankAccount?: string;
+  };
+  totalAmount: number;
+  paidAmount: number;
+  remainingAmount: number;
+  currency: string;
+  paymentSchedule: PaymentScheduleItem[];
+  paymentMethod?: string;
+  lateFeeRate?: number;
+  status: 'active' | 'completed' | 'defaulted' | 'cancelled';
+  nextPaymentDue?: Date;
+  createdAt: Date;
+  lastPaymentAt?: Date;
+}
+
+interface PaymentScheduleItem {
+  date: Date;
+  amount: number;
+  description: string;
+  status: 'pending' | 'paid' | 'overdue' | 'cancelled';
+  paidAt?: Date;
+  invoiceNumber?: string;
+}
+
+interface PaymentReminder {
+  id: string;
+  payableId: string;
+  paymentDate: Date;
+  amount: number;
+  supplier: string;
+  daysUntilDue: number;
+  sent: boolean;
+  sentAt?: Date;
+}
+
 export class FinanceNode extends BaseNode {
   private companyInfo: FinanceNodeConfig['companyInfo'];
   private payments: Map<string, Payment> = new Map();
   private invoices: Map<string, Invoice> = new Map();
   private transactions: Map<string, Transaction> = new Map();
+  private payables: Map<string, PayableContract> = new Map(); // Borçlar
+  private reminders: Map<string, PaymentReminder> = new Map(); // Ödeme hatırlatıcıları
   private invoiceCounter: number = 1000;
   private parasutAdapter?: ParasutAdapter;
 
@@ -542,5 +586,318 @@ export class FinanceNode extends BaseNode {
       const invoice = this.getInvoice(message.payload.invoiceId);
       return invoice || { error: 'Invoice not found' };
     });
+
+    // Register payable contract (we owe money)
+    this.communication.onMessage('register-payable-contract', async (message) => {
+      this.remember('conversation', message, ['payable-registration'], 8);
+      const payable = await this.registerPayableContract(message.payload);
+      return { success: true, payable };
+    });
+
+    // Register receivable contract (we receive money) - already handled by create-invoice
+    this.communication.onMessage('register-receivable-contract', async (message) => {
+      this.remember('conversation', message, ['receivable-registration'], 7);
+      // For receivables, we'll track them via invoices (already implemented)
+      return { success: true, message: 'Receivable will be tracked via invoices' };
+    });
+
+    // Record payment made (we paid a supplier)
+    this.communication.onMessage('record-payment-made', async (message) => {
+      const result = await this.recordPaymentMade(message.payload);
+      return result;
+    });
+
+    // Get payables summary
+    this.communication.onMessage('get-payables', async (message) => {
+      return this.getPayablesSummary();
+    });
+
+    // Get cash flow forecast
+    this.communication.onMessage('get-cash-flow-forecast', async (message) => {
+      return this.getCashFlowForecast(message.payload?.days || 30);
+    });
+  }
+
+  /**
+   * Register a payable contract (we owe money to a supplier)
+   */
+  private async registerPayableContract(data: {
+    contractId: string;
+    contractType: string;
+    counterparty: { name: string; taxId?: string };
+    totalAmount: number;
+    currency: string;
+    paymentSchedule: PaymentScheduleItem[];
+    paymentMethod?: string;
+    lateFeeRate?: number;
+  }): Promise<PayableContract> {
+    const payable: PayableContract = {
+      id: uuidv4(),
+      contractId: data.contractId,
+      contractType: data.contractType,
+      supplier: {
+        name: data.counterparty.name,
+        taxId: data.counterparty.taxId,
+      },
+      totalAmount: data.totalAmount,
+      paidAmount: 0,
+      remainingAmount: data.totalAmount,
+      currency: data.currency,
+      paymentSchedule: data.paymentSchedule,
+      paymentMethod: data.paymentMethod,
+      lateFeeRate: data.lateFeeRate,
+      status: 'active',
+      nextPaymentDue: data.paymentSchedule[0]?.date,
+      createdAt: new Date(),
+    };
+
+    this.payables.set(payable.id, payable);
+
+    this.remember('data', { payable }, ['payable', 'contract'], 9);
+
+    // Schedule payment reminders
+    this.schedulePaymentReminders(payable);
+
+    this.logEvent('Payable contract registered', {
+      payableId: payable.id,
+      supplier: payable.supplier.name,
+      amount: payable.totalAmount,
+    });
+
+    return payable;
+  }
+
+  /**
+   * Record a payment made to supplier
+   */
+  private async recordPaymentMade(data: {
+    payableId: string;
+    amount: number;
+    paymentDate: Date;
+    invoiceNumber?: string;
+  }): Promise<any> {
+    const payable = this.payables.get(data.payableId);
+
+    if (!payable) {
+      return { success: false, error: 'Payable not found' };
+    }
+
+    // Find the payment schedule item
+    const scheduleItem = payable.paymentSchedule.find(
+      item => item.status === 'pending' || item.status === 'overdue'
+    );
+
+    if (!scheduleItem) {
+      return { success: false, error: 'No pending payments found' };
+    }
+
+    // Mark as paid
+    scheduleItem.status = 'paid';
+    scheduleItem.paidAt = data.paymentDate;
+    scheduleItem.invoiceNumber = data.invoiceNumber;
+
+    // Update totals
+    payable.paidAmount += data.amount;
+    payable.remainingAmount -= data.amount;
+    payable.lastPaymentAt = data.paymentDate;
+
+    // Update next payment due
+    const nextPending = payable.paymentSchedule.find(item => item.status === 'pending');
+    payable.nextPaymentDue = nextPending?.date;
+
+    // Check if fully paid
+    if (payable.remainingAmount <= 0) {
+      payable.status = 'completed';
+    }
+
+    // Record transaction
+    const transaction: Transaction = {
+      id: uuidv4(),
+      type: 'expense',
+      category: payable.contractType,
+      amount: data.amount,
+      currency: payable.currency,
+      description: `Payment to ${payable.supplier.name} - ${scheduleItem.description}`,
+      date: data.paymentDate,
+    };
+
+    this.transactions.set(transaction.id, transaction);
+
+    this.remember('data', { payment: data, payable }, ['payment-made', 'expense'], 9);
+
+    this.logEvent('Payment recorded', {
+      payableId: data.payableId,
+      amount: data.amount,
+      supplier: payable.supplier.name,
+    });
+
+    return {
+      success: true,
+      payable,
+      remainingAmount: payable.remainingAmount,
+      status: payable.status,
+    };
+  }
+
+  /**
+   * Schedule payment reminders for a payable contract
+   */
+  private schedulePaymentReminders(payable: PayableContract): void {
+    const reminderDays = [7, 3, 1]; // Remind 7, 3, and 1 days before due date
+
+    for (const scheduleItem of payable.paymentSchedule) {
+      for (const days of reminderDays) {
+        const reminderDate = new Date(scheduleItem.date);
+        reminderDate.setDate(reminderDate.getDate() - days);
+
+        const reminder: PaymentReminder = {
+          id: uuidv4(),
+          payableId: payable.id,
+          paymentDate: scheduleItem.date,
+          amount: scheduleItem.amount,
+          supplier: payable.supplier.name,
+          daysUntilDue: days,
+          sent: false,
+        };
+
+        this.reminders.set(reminder.id, reminder);
+      }
+    }
+  }
+
+  /**
+   * Check and send payment reminders
+   * This should be called periodically (e.g., daily)
+   */
+  private async checkPaymentReminders(): Promise<void> {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    for (const reminder of this.reminders.values()) {
+      if (reminder.sent) continue;
+
+      const reminderDate = new Date(reminder.paymentDate);
+      reminderDate.setDate(reminderDate.getDate() - reminder.daysUntilDue);
+      reminderDate.setHours(0, 0, 0, 0);
+
+      if (reminderDate.getTime() === today.getTime()) {
+        // Send reminder to ada.legal or emit event
+        this.emit('payment-reminder', {
+          payableId: reminder.payableId,
+          supplier: reminder.supplier,
+          amount: reminder.amount,
+          dueDate: reminder.paymentDate,
+          daysUntilDue: reminder.daysUntilDue,
+        });
+
+        reminder.sent = true;
+        reminder.sentAt = new Date();
+
+        this.logEvent('Payment reminder sent', {
+          supplier: reminder.supplier,
+          amount: reminder.amount,
+          daysUntilDue: reminder.daysUntilDue,
+        });
+      }
+    }
+  }
+
+  /**
+   * Get payables summary
+   */
+  private getPayablesSummary(): any {
+    const active = Array.from(this.payables.values()).filter(p => p.status === 'active');
+
+    const totalOutstanding = active.reduce((sum, p) => sum + p.remainingAmount, 0);
+
+    // Get upcoming payments (next 30 days)
+    const today = new Date();
+    const thirtyDaysFromNow = new Date();
+    thirtyDaysFromNow.setDate(today.getDate() + 30);
+
+    const upcomingPayments: any[] = [];
+    for (const payable of active) {
+      for (const item of payable.paymentSchedule) {
+        if (item.status === 'pending' && item.date <= thirtyDaysFromNow) {
+          upcomingPayments.push({
+            payableId: payable.id,
+            supplier: payable.supplier.name,
+            amount: item.amount,
+            currency: payable.currency,
+            dueDate: item.date,
+            description: item.description,
+          });
+        }
+      }
+    }
+
+    // Sort by due date
+    upcomingPayments.sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
+
+    return {
+      totalPayables: this.payables.size,
+      activePayables: active.length,
+      totalOutstanding,
+      upcomingPayments,
+    };
+  }
+
+  /**
+   * Get cash flow forecast
+   */
+  private getCashFlowForecast(days: number = 30): any {
+    const today = new Date();
+    const forecastEnd = new Date();
+    forecastEnd.setDate(today.getDate() + days);
+
+    // Receivables (money coming in)
+    const receivables: any[] = [];
+    for (const invoice of this.invoices.values()) {
+      if (invoice.status !== 'paid' && invoice.dueDate <= forecastEnd) {
+        receivables.push({
+          from: invoice.customerName,
+          amount: invoice.netAmount,
+          currency: invoice.currency,
+          dueDate: invoice.dueDate,
+          type: 'invoice',
+        });
+      }
+    }
+
+    // Payables (money going out)
+    const payables: any[] = [];
+    for (const payable of this.payables.values()) {
+      if (payable.status === 'active') {
+        for (const item of payable.paymentSchedule) {
+          if (item.status === 'pending' && item.date <= forecastEnd) {
+            payables.push({
+              to: payable.supplier.name,
+              amount: item.amount,
+              currency: payable.currency,
+              dueDate: item.date,
+              type: 'contract-payment',
+              description: item.description,
+            });
+          }
+        }
+      }
+    }
+
+    // Calculate net cash flow
+    const receivablesTotal = receivables.reduce((sum, r) => sum + r.amount, 0);
+    const payablesTotal = payables.reduce((sum, p) => sum + p.amount, 0);
+    const netCashFlow = receivablesTotal - payablesTotal;
+
+    return {
+      period: { from: today, to: forecastEnd, days },
+      receivables: receivables.sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime()),
+      payables: payables.sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime()),
+      summary: {
+        expectedIncome: receivablesTotal,
+        expectedExpense: payablesTotal,
+        netCashFlow,
+        alert: netCashFlow < 0 ? '⚠️ Negative cash flow forecast!' : '✓ Positive cash flow',
+      },
+    };
   }
 }
