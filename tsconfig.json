@@ -3,7 +3,7 @@
     "target": "ES2022",
     "module": "ESNext",
     "lib": ["ES2022"],
-    "types": ["node"],
+    "types": ["node", "jest"],
     "outDir": "./dist",
     "rootDir": "./",
     "strict": true,
@@ -23,7 +23,8 @@
   "include": [
     "core/**/*",
     "nodes/**/*",
-    "examples/**/*"
+    "examples/**/*",
+    "tests/**/*"
   ],
   "exclude": [
     "node_modules",
