@@ -14,6 +14,7 @@ import EventEmitter from 'events';
 import { SkillTree, Skill, SkillCategory } from '../skills/SkillTree.js';
 import { MaritimeKnowledgeBase } from '../knowledge/MaritimeKnowledgeBase.js';
 import { Concept, MaritimeContext } from '../types/maritime-ontology.js';
+import { TabPFNAdapter, TabPFNPrediction } from './TabPFNAdapter.js';
 
 // ============================================================================
 // TYPES
@@ -157,6 +158,12 @@ export class ExperienceLearningPipeline extends EventEmitter {
     exploration_rate: 0.1,
   };
 
+  // TabPFN-2.5 integration
+  private tabpfn: TabPFNAdapter;
+  private tabpfnEnabled: boolean = true;
+  private readonly FEW_SHOT_THRESHOLD = 10; // Use TabPFN for <10 samples
+  private readonly HYBRID_THRESHOLD = 100; // Use hybrid for 10-100 samples
+
   constructor(skillTree: SkillTree, knowledgeBase: MaritimeKnowledgeBase) {
     super();
     this.skillTree = skillTree;
@@ -165,6 +172,20 @@ export class ExperienceLearningPipeline extends EventEmitter {
     this.patterns = new Map();
     this.insights = [];
     this.processedExperiences = new Set();
+
+    // Initialize TabPFN adapter
+    this.tabpfn = new TabPFNAdapter({
+      max_samples: 10_000,
+      max_features: 2_000,
+      task_type: 'classification',
+      enable_distillation: true,
+      cache_predictions: true,
+    });
+
+    // Listen to TabPFN events
+    this.tabpfn.on('tabpfn:prediction_made', (data) => {
+      this.emit('tabpfn:prediction', data);
+    });
   }
 
   // ========================================================================
@@ -194,12 +215,112 @@ export class ExperienceLearningPipeline extends EventEmitter {
 
   /**
    * Process an experience through the learning pipeline
+   * Intelligently routes to TabPFN (few-shot) or SEAL (many-shot) based on data availability
    */
   private async processExperience(experience: MaritimeExperience): Promise<void> {
     if (this.processedExperiences.has(experience.id)) {
       return; // Already processed
     }
 
+    // Determine sample count for this experience type
+    const sampleCount = this.getExperiencesByType(experience.type).length;
+
+    // ========================================================================
+    // ROUTING LOGIC: TabPFN vs SEAL
+    // ========================================================================
+
+    let processingStrategy: 'tabpfn' | 'hybrid' | 'seal';
+
+    if (sampleCount < this.FEW_SHOT_THRESHOLD && this.tabpfnEnabled) {
+      // Few samples (<10): Use TabPFN for superior few-shot performance
+      processingStrategy = 'tabpfn';
+    } else if (sampleCount < this.HYBRID_THRESHOLD && this.tabpfnEnabled) {
+      // Medium samples (10-100): Use hybrid approach
+      processingStrategy = 'hybrid';
+    } else {
+      // Many samples (>100): Use pure SEAL with RL optimization
+      processingStrategy = 'seal';
+    }
+
+    this.emit('experience:processing_strategy', {
+      id: experience.id,
+      type: experience.type,
+      sample_count: sampleCount,
+      strategy: processingStrategy,
+    });
+
+    // ========================================================================
+    // TABPFN-FIRST PROCESSING (Few-shot learning)
+    // ========================================================================
+
+    if (processingStrategy === 'tabpfn') {
+      await this.processWithTabPFN(experience);
+    }
+
+    // ========================================================================
+    // HYBRID PROCESSING (TabPFN + SEAL)
+    // ========================================================================
+
+    else if (processingStrategy === 'hybrid') {
+      await this.processWithHybrid(experience);
+    }
+
+    // ========================================================================
+    // SEAL-ONLY PROCESSING (Traditional RL-based learning)
+    // ========================================================================
+
+    // Always run SEAL pipeline for skill updates, knowledge extraction
+    // Even when using TabPFN, we still want to track experiences
+    await this.processWithSEAL(experience);
+
+    // Mark as processed
+    this.processedExperiences.add(experience.id);
+
+    this.emit('experience:processed', {
+      id: experience.id,
+      strategy: processingStrategy,
+      sample_count: sampleCount,
+    });
+  }
+
+  /**
+   * Process experience with TabPFN few-shot learning
+   */
+  private async processWithTabPFN(experience: MaritimeExperience): Promise<void> {
+    // Add to TabPFN training data
+    this.tabpfn.addExperiences([experience]);
+
+    // TabPFN works best with few samples - it will learn patterns immediately
+    this.emit('tabpfn:few_shot_learning', {
+      experience_id: experience.id,
+      type: experience.type,
+      training_samples: this.tabpfn.getStatistics().training_samples,
+    });
+  }
+
+  /**
+   * Process experience with hybrid TabPFN + SEAL approach
+   */
+  private async processWithHybrid(experience: MaritimeExperience): Promise<void> {
+    // Add to TabPFN training data
+    this.tabpfn.addExperiences([experience]);
+
+    // Generate SEAL self-edit
+    const selfEdit = await this.generateSelfEdit(experience);
+
+    // Combine TabPFN predictions with SEAL insights
+    // TabPFN provides fast predictions, SEAL provides deep understanding
+    this.emit('hybrid:processing', {
+      experience_id: experience.id,
+      self_edit: selfEdit,
+      tabpfn_samples: this.tabpfn.getStatistics().training_samples,
+    });
+  }
+
+  /**
+   * Process experience with pure SEAL pipeline
+   */
+  private async processWithSEAL(experience: MaritimeExperience): Promise<void> {
     // Step 1: Update skills
     await this.updateSkills(experience);
 
@@ -215,15 +336,6 @@ export class ExperienceLearningPipeline extends EventEmitter {
     // Step 5: Generate insights
     const insights = await this.generateInsights(experience, lessons);
     this.insights.push(...insights);
-
-    // Mark as processed
-    this.processedExperiences.add(experience.id);
-
-    this.emit('experience:processed', {
-      id: experience.id,
-      lessons_learned: lessons.length,
-      insights_generated: insights.length,
-    });
   }
 
   // ========================================================================
@@ -919,6 +1031,180 @@ export class ExperienceLearningPipeline extends EventEmitter {
       current_hyperparameters: this.hyperparameters,
       learning_iterations: this.learningIterations.length,
       current_learning_velocity: currentVelocity,
+    };
+  }
+
+  // ========================================================================
+  // TABPFN-2.5: PUBLIC API
+  // ========================================================================
+
+  /**
+   * Make a prediction using TabPFN few-shot learning
+   * Best for: <10 samples, needs immediate prediction
+   */
+  async predictWithTabPFN(experience: MaritimeExperience): Promise<TabPFNPrediction> {
+    if (!this.tabpfnEnabled) {
+      throw new Error('TabPFN is disabled');
+    }
+
+    // Ensure we have training data
+    const sampleCount = this.getExperiencesByType(experience.type).length;
+    if (sampleCount === 0) {
+      throw new Error('No training data available for TabPFN prediction');
+    }
+
+    // Make prediction
+    const prediction = await this.tabpfn.predictFromExperience(experience);
+
+    this.emit('tabpfn:prediction_requested', {
+      experience_id: experience.id,
+      type: experience.type,
+      sample_count: sampleCount,
+      confidence: prediction.confidence,
+    });
+
+    return prediction;
+  }
+
+  /**
+   * Make a prediction using hybrid TabPFN + SEAL approach
+   * Best for: 10-100 samples, needs both speed and insight
+   */
+  async predictWithHybrid(experience: MaritimeExperience): Promise<{
+    tabpfn_prediction: TabPFNPrediction;
+    seal_insight: SelfEdit;
+    combined_confidence: number;
+  }> {
+    // Get TabPFN prediction
+    const tabpfnPrediction = await this.predictWithTabPFN(experience);
+
+    // Get SEAL self-edit insight
+    const sealInsight = await this.generateSelfEdit(experience);
+
+    // Combine confidences
+    // TabPFN confidence + SEAL expected improvement
+    const combinedConfidence = (tabpfnPrediction.confidence + (1 - sealInsight.expected_improvement)) / 2;
+
+    return {
+      tabpfn_prediction: tabpfnPrediction,
+      seal_insight: sealInsight,
+      combined_confidence: combinedConfidence,
+    };
+  }
+
+  /**
+   * Get TabPFN statistics
+   */
+  getTabPFNStatistics(): {
+    enabled: boolean;
+    training_samples: number;
+    max_samples: number;
+    predictions_cached: number;
+    few_shot_threshold: number;
+    hybrid_threshold: number;
+    has_distilled_model: boolean;
+  } {
+    const stats = this.tabpfn.getStatistics();
+
+    return {
+      enabled: this.tabpfnEnabled,
+      training_samples: stats.training_samples,
+      max_samples: stats.max_samples,
+      predictions_cached: stats.cache_size,
+      few_shot_threshold: this.FEW_SHOT_THRESHOLD,
+      hybrid_threshold: this.HYBRID_THRESHOLD,
+      has_distilled_model: stats.has_distilled_model,
+    };
+  }
+
+  /**
+   * Get combined statistics (SEAL + TabPFN)
+   */
+  getCombinedStatistics(): {
+    seal: ReturnType<typeof this.getSEALStatistics>;
+    tabpfn: ReturnType<typeof this.getTabPFNStatistics>;
+    experiences: ReturnType<typeof this.getStatistics>;
+    processing_strategy: {
+      tabpfn_count: number;
+      hybrid_count: number;
+      seal_count: number;
+    };
+  } {
+    // Count experiences by processing strategy
+    const allExperiences = Array.from(this.experiences.values());
+    let tabpfnCount = 0;
+    let hybridCount = 0;
+    let sealCount = 0;
+
+    for (const exp of allExperiences) {
+      const sampleCount = this.getExperiencesByType(exp.type).length;
+      if (sampleCount < this.FEW_SHOT_THRESHOLD) {
+        tabpfnCount++;
+      } else if (sampleCount < this.HYBRID_THRESHOLD) {
+        hybridCount++;
+      } else {
+        sealCount++;
+      }
+    }
+
+    return {
+      seal: this.getSEALStatistics(),
+      tabpfn: this.getTabPFNStatistics(),
+      experiences: this.getStatistics(),
+      processing_strategy: {
+        tabpfn_count: tabpfnCount,
+        hybrid_count: hybridCount,
+        seal_count: sealCount,
+      },
+    };
+  }
+
+  /**
+   * Toggle TabPFN on/off
+   */
+  setTabPFNEnabled(enabled: boolean): void {
+    this.tabpfnEnabled = enabled;
+    this.emit('tabpfn:enabled_changed', { enabled });
+  }
+
+  /**
+   * Distill TabPFN to faster model for production
+   */
+  async distillTabPFNModel(modelType: 'mlp' | 'xgboost' | 'random_forest') {
+    return await this.tabpfn.distillToFastModel(modelType);
+  }
+
+  /**
+   * Get recommended processing strategy for an experience type
+   */
+  getRecommendedStrategy(experienceType: ExperienceType): {
+    strategy: 'tabpfn' | 'hybrid' | 'seal';
+    reason: string;
+    sample_count: number;
+    confidence_threshold: number;
+  } {
+    const sampleCount = this.getExperiencesByType(experienceType).length;
+    let strategy: 'tabpfn' | 'hybrid' | 'seal';
+    let reason: string;
+
+    if (sampleCount < this.FEW_SHOT_THRESHOLD && this.tabpfnEnabled) {
+      strategy = 'tabpfn';
+      reason = `Few samples (${sampleCount}/${this.FEW_SHOT_THRESHOLD}) - TabPFN excels with limited data`;
+    } else if (sampleCount < this.HYBRID_THRESHOLD && this.tabpfnEnabled) {
+      strategy = 'hybrid';
+      reason = `Medium samples (${sampleCount}/${this.HYBRID_THRESHOLD}) - Hybrid combines TabPFN speed with SEAL depth`;
+    } else {
+      strategy = 'seal';
+      reason = `Many samples (${sampleCount}) - SEAL RL optimization provides best performance`;
+    }
+
+    const confidenceThreshold = this.tabpfn.getConfidenceThreshold(sampleCount);
+
+    return {
+      strategy,
+      reason,
+      sample_count: sampleCount,
+      confidence_threshold: confidenceThreshold,
     };
   }
 }
