@@ -527,6 +527,9 @@ export abstract class BaseNode extends EventEmitter {
       'ada.finance': 0,
       'ada.maintenance': 0,
       'ada.weather': 0,
+      'ada.legal': 0,
+      'ada.restaurant': 0,
+      'ada.customer': 0,
     };
 
     let totalClones = 0;

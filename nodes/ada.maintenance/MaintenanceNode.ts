@@ -296,7 +296,56 @@ export class MaintenanceNode extends BaseNode {
 
     this.remember('data', { request, completion: data }, ['maintenance', 'completed'], 9);
 
+    // Create invoice via Finance node
+    this.createInvoiceForMaintenance(request, data.actualCost)
+      .catch(error => {
+        console.error('Failed to create invoice for maintenance:', error.message);
+      });
+
     return { success: true, request };
+  }
+
+  /**
+   * Create invoice for maintenance service via Finance node
+   */
+  private async createInvoiceForMaintenance(
+    request: MaintenanceRequest,
+    actualCost: number
+  ): Promise<void> {
+    const financeNodes = BaseNode.findNodesByType('ada.finance');
+    if (financeNodes.length === 0) {
+      console.log('No finance node available for invoice creation');
+      return;
+    }
+
+    try {
+      const invoiceResponse = await this.requestFromNode(
+        financeNodes[0].getIdentity().id,
+        'create-invoice',
+        {
+          customerId: request.requesterId,
+          customerName: request.requesterId, // Would be better to store customer name
+          items: [
+            {
+              description: `Maintenance Service - ${request.category}: ${request.description}`,
+              quantity: 1,
+              unitPrice: actualCost,
+              vatRate: 20, // %20 KDV
+            },
+          ],
+          withholdingRate: 0, // No withholding for maintenance services
+        }
+      );
+
+      this.remember('data', {
+        requestId: request.id,
+        invoice: invoiceResponse,
+      }, ['invoice', 'finance', 'maintenance'], 8);
+
+      console.log(`✅ Invoice created for maintenance request ${request.id}: ${invoiceResponse.invoice?.invoiceNumber}`);
+    } catch (error: any) {
+      console.error(`Failed to create invoice for maintenance ${request.id}:`, error.message);
+    }
   }
 
   /**

@@ -10,7 +10,10 @@ export type NodeType =
   | 'ada.congress'
   | 'ada.finance'
   | 'ada.maintenance'
-  | 'ada.weather';
+  | 'ada.weather'
+  | 'ada.legal'
+  | 'ada.restaurant'
+  | 'ada.customer';
 
 export interface NodeIdentity {
   id: string;
