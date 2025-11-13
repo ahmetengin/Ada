@@ -823,3 +823,289 @@ export interface LegalDocument {
   status: 'draft' | 'active' | 'expired' | 'terminated';
   analysis?: ContractAnalysis;
 }
+
+// Ada.Legal (International Maritime Law) specific types
+
+// IMO Regulations and Maritime Law
+export interface IMORegulation {
+  code: string; // e.g., 'SOLAS-III-20', 'MARPOL-Annex-I'
+  title: string;
+  category: 'SOLAS' | 'MARPOL' | 'STCW' | 'COLREGS' | 'MLC' | 'ISM' | 'ISPS';
+  requirement: string;
+  applicableTo: string[]; // vessel types
+  effectiveDate: Date;
+  amendments?: Array<{
+    date: Date;
+    description: string;
+  }>;
+}
+
+export interface VesselCompliance {
+  vesselId: string;
+  vesselName: string;
+  checkDate: Date;
+  overallStatus: 'compliant' | 'partial' | 'non-compliant';
+  regulations: Array<{
+    regulation: IMORegulation;
+    compliant: boolean;
+    notes?: string;
+  }>;
+  recommendations: string[];
+  nextInspectionDue: Date;
+}
+
+export interface SafetyEquipmentRequirement {
+  equipment: string;
+  quantity: number;
+  regulation: string; // IMO regulation code
+  inspectionRequired: boolean;
+  certificationRequired: boolean;
+}
+
+export interface CrewRequirement {
+  position: string;
+  certificateRequired: string; // STCW certification
+  minimumExperience: string;
+  medicalRequirements: string[];
+}
+
+// KVKK/GDPR Compliance
+export type PersonalDataCategory =
+  | 'identity'
+  | 'contact'
+  | 'financial'
+  | 'location'
+  | 'biometric'
+  | 'health'
+  | 'criminal-records'
+  | 'special-category';
+
+export interface DataProcessingActivity {
+  activityId: string;
+  controller: string;
+  purpose: string;
+  legalBasis: 'consent' | 'contract' | 'legal-obligation' | 'legitimate-interests' | 'vital-interests' | 'public-task';
+  dataCategories: PersonalDataCategory[];
+  dataSubjects: string[];
+  recipients: string[];
+  crossBorderTransfer: boolean;
+  transferDestinations?: string[];
+  retentionPeriod: string;
+  securityMeasures: string[];
+  dpia: {
+    required: boolean;
+    completed: boolean;
+    date?: Date;
+  };
+  complianceStatus: {
+    kvkk: 'compliant' | 'partial' | 'non-compliant';
+    gdpr: 'compliant' | 'partial' | 'non-compliant';
+  };
+}
+
+export interface DataSubjectRight {
+  requestId: string;
+  dataSubject: {
+    name: string;
+    email: string;
+    identityVerified: boolean;
+  };
+  requestType: 'access' | 'erasure' | 'rectification' | 'restriction' | 'portability' | 'objection';
+  receivedDate: Date;
+  deadline: Date; // 30 days for KVKK/GDPR
+  status: 'received' | 'in-progress' | 'completed' | 'rejected';
+  response?: string;
+  completedDate?: Date;
+}
+
+export interface DataBreachIncident {
+  incidentId: string;
+  discoveredDate: Date;
+  reportedDate?: Date;
+  breachType: 'confidentiality' | 'integrity' | 'availability';
+  affectedDataCategories: PersonalDataCategory[];
+  affectedIndividuals: number;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  description: string;
+  immediateActions: string[];
+  notificationRequired: boolean;
+  notified: {
+    authority: boolean;
+    dataSubjects: boolean;
+  };
+}
+
+export interface PrivacyPolicy {
+  version: string;
+  language: 'tr' | 'en';
+  effectiveDate: Date;
+  controller: {
+    name: string;
+    address: string;
+    contact: string;
+  };
+  sections: Array<{
+    title: string;
+    content: string;
+  }>;
+  kvkkCompliant: boolean;
+  gdprCompliant: boolean;
+  lastReviewed: Date;
+}
+
+// Maritime Insurance
+export interface PIInsurancePolicy {
+  policyId: string;
+  club: string; // 'UK P&I Club', 'Gard', 'Skuld', etc.
+  vesselId: string;
+  coverage: {
+    thirdPartyLiability: number;
+    collisionLiability: number;
+    cargoLiability: number;
+    passengerLiability: number;
+    crewLiability: number;
+    pollutionLiability: number;
+    wreckRemoval: number;
+  };
+  premium: {
+    annual: number;
+    callableCapital?: number; // P&I clubs are mutual
+  };
+  policyPeriod: {
+    start: Date;
+    end: Date;
+  };
+  deductible: number;
+  currency: string;
+}
+
+export interface HullMachineryPolicy {
+  policyId: string;
+  insurer: string;
+  vesselId: string;
+  insuredValue: number;
+  coverage: {
+    hull: boolean;
+    machinery: boolean;
+    equipment: boolean;
+    totalLoss: boolean;
+    generalAverage: boolean;
+  };
+  navigationalLimits: string[];
+  premium: {
+    annual: number;
+  };
+  policyPeriod: {
+    start: Date;
+    end: Date;
+  };
+  deductible: number;
+  currency: string;
+}
+
+export interface InsuranceClaim {
+  claimId: string;
+  policyId: string;
+  policyType: 'PI' | 'hull-machinery' | 'cargo' | 'crew';
+  incident: {
+    date: Date;
+    location: {
+      latitude: number;
+      longitude: number;
+      description?: string;
+    };
+    description: string;
+    witnesses?: string[];
+  };
+  claimAmount: {
+    requested: number;
+    breakdown: Array<{
+      item: string;
+      amount: number;
+    }>;
+  };
+  status: 'submitted' | 'under-review' | 'survey-required' | 'negotiating' | 'settled' | 'rejected';
+  submittedDate: Date;
+  settledDate?: Date;
+  settledAmount?: number;
+  estimatedSettlement?: {
+    low: number;
+    expected: number;
+    high: number;
+  };
+  documents: string[];
+}
+
+// International Contracts (Marina, Charter Parties)
+export interface MarinaContractTerms {
+  contractType: 'mooring' | 'dry-berthing' | 'lifting-launching' | 'service' | 'commercial-unit';
+  parties: {
+    marina: {
+      name: string;
+      legalEntity: string;
+      address: string;
+      country: string;
+    };
+    yachtOwner: {
+      name: string;
+      vessel: string;
+      flag: string;
+      loa: number;
+      beam: number;
+    };
+  };
+  terms: {
+    startDate: Date;
+    endDate: Date;
+    autoRenewal: boolean;
+    noticePeriod: number; // days
+  };
+  pricing: {
+    currency: string;
+    mooringFee?: number;
+    liftingFee?: number;
+    launchingFee?: number;
+    advancePayment: number; // percentage
+    paymentTerms: string;
+  };
+  services: {
+    included: string[];
+    additional: string[];
+    prohibited: string[];
+  };
+  insurance: {
+    required: boolean;
+    minCoverage: number;
+    types: string[];
+  };
+  liabilities: {
+    marina: string[];
+    yachtOwner: string[];
+    excluded: string[];
+  };
+  termination: {
+    conditions: string[];
+    noticePeriod: number;
+    refundPolicy: string;
+    penalties?: Array<{
+      breach: string;
+      penalty: string;
+    }>;
+  };
+  disputeResolution: {
+    governingLaw: string;
+    jurisdiction: string;
+    arbitration?: {
+      required: boolean;
+      rules: string;
+      location: string;
+    };
+  };
+}
+
+export interface ContractRiskClause {
+  clause: string;
+  risk: string;
+  recommendation: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+}
