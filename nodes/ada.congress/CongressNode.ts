@@ -136,6 +136,7 @@ export class CongressNode extends BaseNode {
     endDate: Date;
     venue: VenueInfo;
     expectedAttendees: number;
+    includeGalaDinner?: boolean;
   }): CongressEvent {
     const event: CongressEvent = {
       id: uuidv4(),
@@ -151,7 +152,64 @@ export class CongressNode extends BaseNode {
 
     this.remember('data', { event }, ['event', 'planning'], 9);
 
+    // Plan gala dinner if requested
+    if (data.includeGalaDinner !== false) {
+      this.planGalaDinner(event.id, data.expectedAttendees)
+        .catch(error => {
+          console.error('Failed to plan gala dinner:', error.message);
+        });
+    }
+
     return event;
+  }
+
+  /**
+   * Plan gala dinner via Restaurant node
+   */
+  async planGalaDinner(eventId: string, attendeeCount: number): Promise<any> {
+    const event = this.events.get(eventId);
+    if (!event) {
+      return { error: 'Event not found' };
+    }
+
+    const restaurantNodes = BaseNode.findNodesByType('ada.restaurant');
+    if (restaurantNodes.length === 0) {
+      console.log('No restaurant node available for gala dinner');
+      return { error: 'No restaurant node available' };
+    }
+
+    try {
+      // Schedule gala dinner for the evening of the last day
+      const galaDinnerTime = new Date(event.endDate);
+      galaDinnerTime.setHours(19, 0, 0, 0); // 7 PM
+
+      const result = await this.requestFromNode(
+        restaurantNodes[0].getIdentity().id,
+        'request-catering',
+        {
+          eventId: event.id,
+          eventName: event.name,
+          guestCount: attendeeCount,
+          mealType: 'dinner',
+          cuisine: ['Turkish', 'Mediterranean', 'International'],
+          dietaryRestrictions: ['vegetarian-option', 'vegan-option', 'halal'],
+          serviceTime: galaDinnerTime,
+          venue: event.venue.address,
+          budget: attendeeCount * 150, // $150 per person for gala dinner
+        }
+      );
+
+      this.remember('data', {
+        eventId,
+        galaDinner: result,
+      }, ['gala', 'catering', 'restaurant'], 8);
+
+      console.log(`✅ Gala dinner planned for event ${event.name}: ${attendeeCount} guests`);
+      return result;
+    } catch (error: any) {
+      console.error('Failed to plan gala dinner:', error.message);
+      return { error: error.message };
+    }
   }
 
   /**
@@ -266,7 +324,40 @@ export class CongressNode extends BaseNode {
       });
     }
 
-    // Step 2: Flight
+    // Step 2: Flight - Book through Travel node
+    let flightDetails: any = { flightNumber: 'TBD', airline: 'TBD' };
+    if (this.travelNodes.length > 0) {
+      try {
+        const flightBooking = await this.communication.request(
+          this.travelNodes[0],
+          'book-flight',
+          {
+            customerId: attendee.id,
+            departure: {
+              airport: this.inferHomeAirport(homeAddress),
+              date: flightTime,
+            },
+            arrival: {
+              airport: this.inferDestinationAirport(event.venue.address),
+              date: arrivalTime,
+            },
+            passengers: [{ name: attendee.name, email: attendee.email }],
+            class: 'business',
+          }
+        );
+        if (flightBooking.success) {
+          flightDetails = {
+            flightNumber: flightBooking.flightNumber,
+            airline: flightBooking.booking.details.airline,
+            pnr: flightBooking.pnr,
+            price: flightBooking.booking.totalPrice,
+          };
+        }
+      } catch (error) {
+        console.error('Flight booking failed:', error);
+      }
+    }
+
     steps.push({
       id: uuidv4(),
       sequence: sequence++,
@@ -275,7 +366,7 @@ export class CongressNode extends BaseNode {
       location: 'International Airport',
       description: `Flight to ${event.venue.address}`,
       status: 'pending',
-      details: { flightNumber: 'TBD', airline: 'TBD' },
+      details: flightDetails,
     });
 
     // Step 3: Arrival transfer
@@ -290,7 +381,39 @@ export class CongressNode extends BaseNode {
       details: { driver: 'TBD', vehicle: 'Shuttle' },
     });
 
-    // Step 4: Hotel check-in
+    // Step 4: Hotel check-in - Book through Travel node
+    let hotelDetails: any = { hotel: 'TBD', room: 'TBD' };
+    if (this.travelNodes.length > 0) {
+      try {
+        const hotelReservation = await this.communication.request(
+          this.travelNodes[0],
+          'reserve-hotel',
+          {
+            customerId: attendee.id,
+            hotelName: `${event.venue.name} Hotel`,
+            location: event.venue.address,
+            checkIn: hotelCheckIn,
+            checkOut: new Date(event.endDate),
+            rooms: [{ type: 'deluxe', guests: [attendee.name] }],
+          }
+        );
+        if (hotelReservation.success) {
+          const nights = Math.ceil(
+            (new Date(event.endDate).getTime() - hotelCheckIn.getTime()) / (1000 * 60 * 60 * 24)
+          );
+          hotelDetails = {
+            hotel: hotelReservation.booking.details.hotelName,
+            confirmationNumber: hotelReservation.confirmationNumber,
+            room: 'Deluxe Room',
+            nights: nights,
+            price: hotelReservation.booking.totalPrice,
+          };
+        }
+      } catch (error) {
+        console.error('Hotel reservation failed:', error);
+      }
+    }
+
     steps.push({
       id: uuidv4(),
       sequence: sequence++,
@@ -299,7 +422,7 @@ export class CongressNode extends BaseNode {
       location: 'Event Hotel',
       description: 'Hotel check-in',
       status: 'pending',
-      details: { hotel: 'TBD', room: 'TBD' },
+      details: hotelDetails,
     });
 
     // Step 5-N: Event sessions (simplified - would create detailed schedule)
@@ -345,38 +468,75 @@ export class CongressNode extends BaseNode {
     const checkoutTime = new Date(event.endDate);
     checkoutTime.setHours(12, 0, 0, 0);
 
-    steps.push(
-      {
-        id: uuidv4(),
-        sequence: sequence++,
-        type: 'checkout',
-        scheduledTime: checkoutTime,
-        location: 'Event Hotel',
-        description: 'Hotel checkout',
-        status: 'pending',
-        details: {},
-      },
-      {
-        id: uuidv4(),
-        sequence: sequence++,
-        type: 'transfer',
-        scheduledTime: new Date(checkoutTime.getTime() + 60 * 60 * 1000),
-        location: 'Airport',
-        description: 'Hotel to airport transfer',
-        status: 'pending',
-        details: { driver: 'TBD', vehicle: 'Shuttle' },
-      },
-      {
-        id: uuidv4(),
-        sequence: sequence++,
-        type: 'flight',
-        scheduledTime: new Date(checkoutTime.getTime() + 3 * 60 * 60 * 1000),
-        location: 'International Airport',
-        description: 'Return flight',
-        status: 'pending',
-        details: { flightNumber: 'TBD', airline: 'TBD' },
+    steps.push({
+      id: uuidv4(),
+      sequence: sequence++,
+      type: 'checkout',
+      scheduledTime: checkoutTime,
+      location: 'Event Hotel',
+      description: 'Hotel checkout',
+      status: 'pending',
+      details: {},
+    });
+
+    steps.push({
+      id: uuidv4(),
+      sequence: sequence++,
+      type: 'transfer',
+      scheduledTime: new Date(checkoutTime.getTime() + 60 * 60 * 1000),
+      location: 'Airport',
+      description: 'Hotel to airport transfer',
+      status: 'pending',
+      details: { driver: 'TBD', vehicle: 'Shuttle' },
+    });
+
+    // Return flight - Book through Travel node
+    let returnFlightDetails: any = { flightNumber: 'TBD', airline: 'TBD' };
+    const returnFlightTime = new Date(checkoutTime.getTime() + 3 * 60 * 60 * 1000);
+    const returnArrivalTime = new Date(returnFlightTime.getTime() + 2 * 60 * 60 * 1000);
+
+    if (this.travelNodes.length > 0) {
+      try {
+        const returnFlightBooking = await this.communication.request(
+          this.travelNodes[0],
+          'book-flight',
+          {
+            customerId: attendee.id,
+            departure: {
+              airport: this.inferDestinationAirport(event.venue.address),
+              date: returnFlightTime,
+            },
+            arrival: {
+              airport: this.inferHomeAirport(homeAddress),
+              date: returnArrivalTime,
+            },
+            passengers: [{ name: attendee.name, email: attendee.email }],
+            class: 'business',
+          }
+        );
+        if (returnFlightBooking.success) {
+          returnFlightDetails = {
+            flightNumber: returnFlightBooking.flightNumber,
+            airline: returnFlightBooking.booking.details.airline,
+            pnr: returnFlightBooking.pnr,
+            price: returnFlightBooking.booking.totalPrice,
+          };
+        }
+      } catch (error) {
+        console.error('Return flight booking failed:', error);
       }
-    );
+    }
+
+    steps.push({
+      id: uuidv4(),
+      sequence: sequence++,
+      type: 'flight',
+      scheduledTime: returnFlightTime,
+      location: 'International Airport',
+      description: 'Return flight',
+      status: 'pending',
+      details: returnFlightDetails,
+    });
 
     if (homeAddress) {
       steps.push({
@@ -560,6 +720,42 @@ export class CongressNode extends BaseNode {
         fillRate: (eventRegistrations.length / event.expectedAttendees) * 100,
       },
     };
+  }
+
+  /**
+   * Infer home airport from address
+   */
+  private inferHomeAirport(homeAddress?: string): string {
+    if (!homeAddress) return 'SEA'; // Default Seattle
+
+    const address = homeAddress.toLowerCase();
+    if (address.includes('seattle') || address.includes('wa')) return 'SEA';
+    if (address.includes('istanbul') || address.includes('turkey')) return 'IST';
+    if (address.includes('new york') || address.includes('ny')) return 'JFK';
+    if (address.includes('london')) return 'LHR';
+    if (address.includes('paris')) return 'CDG';
+    if (address.includes('dubai')) return 'DXB';
+    if (address.includes('singapore')) return 'SIN';
+    if (address.includes('tokyo')) return 'NRT';
+
+    return 'SEA'; // Default
+  }
+
+  /**
+   * Infer destination airport from venue address
+   */
+  private inferDestinationAirport(venueAddress: string): string {
+    const address = venueAddress.toLowerCase();
+    if (address.includes('istanbul') || address.includes('turkey')) return 'IST';
+    if (address.includes('ankara')) return 'ESB';
+    if (address.includes('izmir')) return 'ADB';
+    if (address.includes('antalya')) return 'AYT';
+    if (address.includes('london')) return 'LHR';
+    if (address.includes('paris')) return 'CDG';
+    if (address.includes('new york')) return 'JFK';
+    if (address.includes('dubai')) return 'DXB';
+
+    return 'IST'; // Default Turkey
   }
 
   /**

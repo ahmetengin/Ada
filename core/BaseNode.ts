@@ -16,6 +16,8 @@ import {
   NodeState,
   NodeMessage,
 } from './types.js';
+import { getEventEmitter } from '../observability/hooks/EventEmitter.js';
+import { createLogger, Logger as LoggerClass } from './utils/Logger.js';
 
 export interface BaseNodeOptions {
   name: string;
@@ -40,6 +42,11 @@ export abstract class BaseNode extends EventEmitter {
   // State
   protected state: NodeState;
 
+  // Observability and Logging
+  private observabilityEmitter = getEventEmitter();
+  private sessionId: string;
+  protected logger: LoggerClass;
+
   // Registry of all nodes
   private static nodeRegistry: Map<string, BaseNode> = new Map();
 
@@ -58,6 +65,12 @@ export abstract class BaseNode extends EventEmitter {
 
     this.capabilities = options.capabilities;
     this.settings = options.settings || {};
+
+    // Initialize session ID (from environment or generate)
+    this.sessionId = process.env.ADA_SESSION_ID || `ada-${Date.now()}-${uuidv4().slice(0, 8)}`;
+
+    // Initialize logger
+    this.logger = createLogger(`${options.type}:${options.name}`);
 
     // Initialize core systems
     this.memory = new NodeMemory();
@@ -86,6 +99,12 @@ export abstract class BaseNode extends EventEmitter {
 
     // Log creation
     this.logEvent('Node created', { identity: this.identity });
+
+    // Send observability event
+    this.sendObservabilityEvent('agent_created', {
+      parentId: this.identity.parentId,
+      generation: this.identity.generation,
+    }, `Agent ${this.identity.type} created: ${this.identity.name}`);
   }
 
   /**
@@ -112,6 +131,7 @@ export abstract class BaseNode extends EventEmitter {
     this.state.status = 'active';
     this.emit('started');
     this.logEvent('Node started', { id: this.identity.id });
+    this.sendObservabilityEvent('agent_started', {}, `Agent ${this.identity.type} started: ${this.identity.name}`);
   }
 
   /**
@@ -119,6 +139,7 @@ export abstract class BaseNode extends EventEmitter {
    */
   async stop(): Promise<void> {
     this.state.status = 'offline';
+    this.sendObservabilityEvent('agent_stopped', {}, `Agent ${this.identity.type} stopped: ${this.identity.name}`);
     this.communication.destroy();
     this.emit('stopped');
     this.logEvent('Node stopped', { id: this.identity.id });
@@ -209,6 +230,22 @@ export abstract class BaseNode extends EventEmitter {
       generation: clone.identity.generation,
     });
 
+    // Send replication event
+    this.observabilityEmitter.sendReplicationEvent(
+      this.identity.id,
+      clone.identity.id,
+      this.identity.type,
+      this.sessionId,
+      clone.identity.generation,
+      {
+        purpose: options.purpose,
+        inheritMemory: options.inheritMemory,
+        inheritConnections: options.inheritConnections,
+      }
+    ).catch(() => {
+      // Silently fail
+    });
+
     return clone;
   }
 
@@ -223,6 +260,21 @@ export abstract class BaseNode extends EventEmitter {
   ): string {
     const memoryId = this.memory.store(type, content, tags, importance);
     this.updateActivity();
+
+    // Send memory event for important memories (importance >= 7)
+    if (importance >= 7) {
+      this.observabilityEmitter.sendMemoryEvent(
+        this.identity.id,
+        this.identity.type,
+        this.sessionId,
+        'memory_stored',
+        type,
+        { importance, tags }
+      ).catch(() => {
+        // Silently fail
+      });
+    }
+
     return memoryId;
   }
 
@@ -294,6 +346,12 @@ export abstract class BaseNode extends EventEmitter {
     this.state.load = load;
 
     if (load > threshold) {
+      // Send auto-scale triggered event
+      this.sendObservabilityEvent('auto_scale_triggered', {
+        load,
+        threshold,
+      }, `Auto-scale triggered for ${this.identity.type} at ${load}% load`);
+
       const cloneInfos = await this.replication.autoScale(load, threshold, maxClones);
       const clones: BaseNode[] = [];
 
@@ -344,6 +402,28 @@ export abstract class BaseNode extends EventEmitter {
   }
 
   /**
+   * Send observability event to tracking server
+   */
+  private sendObservabilityEvent(
+    eventType: string,
+    metadata?: Record<string, any>,
+    description?: string
+  ): void {
+    // Fire and forget - don't block on observability
+    this.observabilityEmitter.sendAgentEvent(
+      this.identity.id,
+      this.identity.type,
+      this.sessionId,
+      eventType,
+      { ...metadata, load: this.state.load },
+      description
+    ).catch((error) => {
+      // Silently fail - observability should not break the agent
+      console.error('Failed to send observability event:', error.message);
+    });
+  }
+
+  /**
    * Update last activity timestamp
    */
   protected updateActivity(): void {
@@ -358,11 +438,44 @@ export abstract class BaseNode extends EventEmitter {
     this.communication.on('message-received', (message: NodeMessage) => {
       this.logEvent('Message received', { from: message.from, subject: message.subject });
       this.updateActivity();
+
+      // Send observability event
+      this.observabilityEmitter.sendCommunicationEvent(
+        message.from,
+        this.identity.id,
+        message.id,
+        message.type,
+        this.sessionId,
+        message.subject,
+        { priority: message.priority }
+      ).catch(() => {
+        // Silently fail
+      });
     });
 
     // Handle sent messages
     this.communication.on('message-sent', (message: NodeMessage) => {
       this.logEvent('Message sent', { to: message.to, subject: message.subject });
+
+      // Send observability event
+      if (message.to === 'broadcast') {
+        this.sendObservabilityEvent('message_broadcast', {
+          subject: message.subject,
+          priority: message.priority,
+        }, `Broadcast message: ${message.subject}`);
+      } else {
+        this.observabilityEmitter.sendCommunicationEvent(
+          this.identity.id,
+          message.to,
+          message.id,
+          message.type,
+          this.sessionId,
+          message.subject,
+          { priority: message.priority }
+        ).catch(() => {
+          // Silently fail
+        });
+      }
     });
 
     // Standard message handlers
@@ -416,6 +529,13 @@ export abstract class BaseNode extends EventEmitter {
       'ada.marina': 0,
       'ada.travel': 0,
       'ada.congress': 0,
+      'ada.finance': 0,
+      'ada.maintenance': 0,
+      'ada.weather': 0,
+      'ada.legal': 0,
+      'ada.restaurant': 0,
+      'ada.customer': 0,
+      'ada.hukuk': 0,
     };
 
     let totalClones = 0;

@@ -3,6 +3,7 @@
     "target": "ES2022",
     "module": "ESNext",
     "lib": ["ES2022"],
+    "types": ["node", "jest"],
     "outDir": "./dist",
     "rootDir": "./",
     "strict": true,
@@ -14,15 +15,16 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true
   },
   "include": [
     "core/**/*",
     "nodes/**/*",
-    "examples/**/*"
+    "examples/**/*",
+    "tests/**/*"
   ],
   "exclude": [
     "node_modules",

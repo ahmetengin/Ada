@@ -3,7 +3,7 @@
 import uuid
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import ForeignKey, Index, String, Text, Uuid
+from sqlalchemy import ForeignKey, Index, JSON, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ada.models.base import TenantScopedModel
@@ -11,6 +11,7 @@ from ada.models.base import TenantScopedModel
 if TYPE_CHECKING:
     from ada.models.tenant import Tenant
     from ada.models.user import User
+    from ada.models.seal_agent import SEALAgent
 
 
 class Fleet(TenantScopedModel):
@@ -63,9 +64,9 @@ class Fleet(TenantScopedModel):
     # Status
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
 
-    # Metadata for cloning
-    metadata: Mapped[dict[str, Any] | None] = mapped_column(
-        type_=None,  # Will be JSON in PostgreSQL
+    # Additional data for cloning
+    extra_data: Mapped[dict[str, Any] | None] = mapped_column(
+        JSON,
         nullable=True,
         comment="Additional metadata for the fleet",
     )
@@ -75,6 +76,12 @@ class Fleet(TenantScopedModel):
 
     users: Mapped[list["User"]] = relationship(
         "User",
+        back_populates="fleet",
+        cascade="all, delete-orphan",
+    )
+
+    seal_agents: Mapped[list["SEALAgent"]] = relationship(
+        "SEALAgent",
         back_populates="fleet",
         cascade="all, delete-orphan",
     )
@@ -109,7 +116,7 @@ class Fleet(TenantScopedModel):
                 "vessel_count": self.vessel_count,
                 "total_capacity": self.total_capacity,
                 "is_active": self.is_active,
-                "metadata": self.metadata,
+                "extra_data": self.extra_data,
             }
         )
         return base_dict

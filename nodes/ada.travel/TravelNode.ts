@@ -182,7 +182,11 @@ export class TravelNode extends BaseNode {
       address: data.location,
       checkIn: data.checkIn,
       checkOut: data.checkOut,
-      rooms: data.rooms,
+      rooms: data.rooms.map(room => ({
+        type: room.type,
+        count: 1,
+        guests: room.guests,
+      })),
       price: nights * data.rooms.length * 150, // $150 per room per night
     };
 
@@ -368,6 +372,20 @@ export class TravelNode extends BaseNode {
     this.communication.onMessage('booking-status', async (message) => {
       const booking = this.bookings.get(message.payload.bookingId);
       return booking || { error: 'Booking not found' };
+    });
+
+    // Flight booking handler
+    this.communication.onMessage('book-flight', async (message) => {
+      this.remember('conversation', message, ['flight-booking'], 7);
+      const result = await this.bookFlight(message.payload);
+      return result;
+    });
+
+    // Hotel reservation handler
+    this.communication.onMessage('reserve-hotel', async (message) => {
+      this.remember('conversation', message, ['hotel-reservation'], 7);
+      const result = await this.reserveHotel(message.payload);
+      return result;
     });
   }
 

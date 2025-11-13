@@ -21,6 +21,8 @@ dependencies = [
     "pydantic-ai>=0.0.14",
     "fastmcp>=0.2.0",
     "python-dotenv>=1.0.0",
+    "bcrypt>=4.2.0",
+    "pyjwt>=2.9.0",
 ]
 
 [project.optional-dependencies]

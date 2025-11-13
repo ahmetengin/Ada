@@ -11,9 +11,14 @@ import { CrewManagement } from './services/CrewManagement.js';
 import { PassengerService } from './services/PassengerService.js';
 import { MenuPlanning } from './services/MenuPlanning.js';
 import { VoyagePlanning } from './services/VoyagePlanning.js';
+import { VHFRadioService } from './services/VHFRadioService.js';
+import { VHFMessageClassifier } from './services/VHFMessageClassifier.js';
+import { VHFRaceMode } from './services/VHFRaceMode.js';
+import { AdaObserver } from './services/AdaObserver.js';
+import { NotificationService } from './services/NotificationService.js';
 
 export interface SeaNodeConfig extends Omit<BaseNodeOptions, 'type' | 'capabilities'> {
-  vessel: VesselData;
+  vessel?: VesselData;
   name: string;
 }
 
@@ -27,6 +32,11 @@ export class SeaNode extends BaseNode {
   private passengerService: PassengerService;
   private menuPlanning: MenuPlanning;
   private voyagePlanning: VoyagePlanning;
+  private vhfRadioService: VHFRadioService;
+  private vhfMessageClassifier: VHFMessageClassifier;
+  private vhfRaceMode?: VHFRaceMode;
+  private observer: AdaObserver; // Intelligent vessel monitoring
+  private notificationService: NotificationService;
 
   // State
   private currentVoyage?: VoyagePlan;
@@ -34,6 +44,17 @@ export class SeaNode extends BaseNode {
   private nmeaDataBuffer: ParsedNMEAData[] = [];
 
   constructor(config: SeaNodeConfig) {
+    // Provide default vessel config if not specified (e.g., during cloning)
+    const defaultVessel: VesselData = config.vessel || {
+      name: config.name || 'Unknown Vessel',
+      imo: 'IMO0000000',
+      mmsi: '000000000',
+      length: 24,
+      beam: 6,
+      draft: 2.5,
+      type: 'Sailing Yacht',
+    };
+
     super({
       ...config,
       type: 'ada.sea',
@@ -47,6 +68,13 @@ export class SeaNode extends BaseNode {
           'menu-planning',
           'voyage-planning',
           'marina-communication',
+          'vhf-radio-monitoring',
+          'emergency-detection',
+          'vessel-state-intelligence',
+          'smart-anchor-watch',
+          'automatic-logbook',
+          'maintenance-management',
+          'away-mode-notifications',
         ],
         services: [
           'vessel-monitoring',
@@ -54,17 +82,24 @@ export class SeaNode extends BaseNode {
           'provisioning',
           'document-management',
           'reservation-management',
+          'vhf-scanner',
+          'radio-transcription',
+          'ada-observer',
+          'primary-navigation-display',
+          'smart-monitoring',
         ],
         integrations: [
           'nmea2000',
           'weather-api',
           'marina-systems',
           'e-invoice',
+          'rtl-sdr',
+          'vhf-radio',
         ],
       },
     });
 
-    this.vessel = config.vessel;
+    this.vessel = defaultVessel;
 
     // Initialize services
     this.nmea2000Parser = new NMEA2000Parser();
@@ -73,6 +108,31 @@ export class SeaNode extends BaseNode {
     this.passengerService = new PassengerService();
     this.menuPlanning = new MenuPlanning();
     this.voyagePlanning = new VoyagePlanning();
+    this.vhfRadioService = new VHFRadioService({
+      geographicMode: 'turkey',
+      autoTuneByLocation: true,
+      enableVAD: true,
+      enableSTT: true,
+    });
+    this.vhfMessageClassifier = new VHFMessageClassifier();
+
+    // Initialize Ada Observer
+    this.observer = new AdaObserver({
+      vesselName: defaultVessel.name,
+      bowRollerHeight: 1.5, // Default 1.5m - should be configurable
+      enableAutoLogging: true,
+      enableStateDetection: true,
+    });
+
+    // Initialize Notification Service
+    this.notificationService = new NotificationService({
+      enabled: true,
+      emailProvider: 'smtp',
+      smsProvider: 'sms-gateway',
+    });
+
+    // Setup observer event handlers
+    this.setupObserverHandlers();
   }
 
   /**
@@ -84,8 +144,14 @@ export class SeaNode extends BaseNode {
     // Set up message handlers for marina communication
     this.setupMarinaHandlers();
 
+    // Set up cross-node collaboration
+    this.setupCrossNodeCollaboration();
+
     // Set up NMEA2000 data processing
     this.setupNMEAProcessing();
+
+    // Set up VHF radio monitoring
+    this.setupVHFRadioHandlers();
 
     this.logEvent('Sea node initialized', { id: this.identity.id });
   }
@@ -117,6 +183,9 @@ export class SeaNode extends BaseNode {
 
       case 'check-weather':
         return await this.checkWeatherTask(data);
+
+      case 'vhf-radio':
+        return await this.manageVHFRadioTask(data);
 
       default:
         throw new Error(`Unknown task type: ${type}`);
@@ -155,6 +224,33 @@ export class SeaNode extends BaseNode {
 
       // Update vessel state
       this.vesselState = this.nmea2000Parser.aggregateToVesselState(this.nmeaDataBuffer);
+
+      // Update Observer with navigation data
+      if (this.vesselState) {
+        this.observer.updateNavigationData({
+          heading: {
+            magnetic: this.vesselState.heading?.magnetic || 0,
+            true: this.vesselState.heading?.true || 0,
+          },
+          wind: {
+            apparentSpeed: this.vesselState.wind?.apparentSpeed || 0,
+            apparentAngle: this.vesselState.wind?.apparentAngle || 0,
+            trueSpeed: this.vesselState.wind?.trueSpeed || 0,
+            trueAngle: this.vesselState.wind?.trueAngle || 0,
+          },
+          depth: this.vesselState.depth || 0,
+          speed: {
+            throughWater: this.vesselState.speed?.stw || 0,
+            overGround: this.vesselState.speed?.sog || 0,
+          },
+          position: {
+            latitude: this.vesselState.position?.latitude || 0,
+            longitude: this.vesselState.position?.longitude || 0,
+          },
+          autopilot: this.vesselState.autopilot,
+          timestamp: new Date(),
+        });
+      }
 
       // Check for alerts
       const alerts = this.nmea2000Parser.checkAlerts(this.vesselState);
@@ -410,12 +506,557 @@ export class SeaNode extends BaseNode {
   }
 
   /**
+   * Setup cross-node collaboration
+   * Enables yacht to work with Weather, Maintenance, Restaurant, and other nodes
+   */
+  private setupCrossNodeCollaboration(): void {
+    // Store connected node IDs for easy access
+    const connectedNodes = {
+      weather: [] as string[],
+      maintenance: [] as string[],
+      restaurant: [] as string[],
+      finance: [] as string[],
+    };
+
+    // Discover and connect to available nodes
+    this.discoverNodes(connectedNodes);
+  }
+
+  /**
+   * Discover available ecosystem nodes
+   */
+  private discoverNodes(connectedNodes: any): void {
+    // Find weather nodes
+    const weatherNodes = BaseNode.findNodesByType('ada.weather');
+    weatherNodes.forEach(node => {
+      connectedNodes.weather.push(node.getIdentity().id);
+      this.connectToNode(node.getIdentity().id);
+    });
+
+    // Find maintenance nodes
+    const maintenanceNodes = BaseNode.findNodesByType('ada.maintenance');
+    maintenanceNodes.forEach(node => {
+      connectedNodes.maintenance.push(node.getIdentity().id);
+      this.connectToNode(node.getIdentity().id);
+    });
+
+    // Find restaurant nodes
+    const restaurantNodes = BaseNode.findNodesByType('ada.restaurant');
+    restaurantNodes.forEach(node => {
+      connectedNodes.restaurant.push(node.getIdentity().id);
+      this.connectToNode(node.getIdentity().id);
+    });
+
+    // Find finance nodes
+    const financeNodes = BaseNode.findNodesByType('ada.finance');
+    financeNodes.forEach(node => {
+      connectedNodes.finance.push(node.getIdentity().id);
+      this.connectToNode(node.getIdentity().id);
+    });
+  }
+
+  /**
+   * Request route safety check from Weather node
+   */
+  async requestRouteSafetyCheck(destination: {
+    latitude: number;
+    longitude: number;
+    name: string;
+  }): Promise<any> {
+    const weatherNodes = BaseNode.findNodesByType('ada.weather');
+    if (weatherNodes.length === 0) {
+      return { error: 'No weather node available' };
+    }
+
+    // Get current position (simulated for demo)
+    const currentPosition = {
+      latitude: 41.0082,
+      longitude: 28.9784,
+      name: this.vessel.name,
+    };
+
+    const result = await this.requestFromNode(
+      weatherNodes[0].getIdentity().id,
+      'check-route-safety',
+      {
+        origin: currentPosition,
+        destination,
+        departureTime: new Date(),
+      }
+    );
+
+    this.remember('data', { routeSafetyCheck: result }, ['weather', 'route-planning'], 8);
+    return result;
+  }
+
+  /**
+   * Request emergency maintenance
+   */
+  async requestEmergencyMaintenance(issue: {
+    category: string;
+    description: string;
+    severity: 'low' | 'medium' | 'high' | 'critical';
+  }): Promise<any> {
+    const maintenanceNodes = BaseNode.findNodesByType('ada.maintenance');
+    if (maintenanceNodes.length === 0) {
+      return { error: 'No maintenance node available' };
+    }
+
+    const result = await this.requestFromNode(
+      maintenanceNodes[0].getIdentity().id,
+      'emergency-repair',
+      {
+        requesterId: this.identity.id,
+        requesterName: this.vessel.name,
+        category: issue.category,
+        description: issue.description,
+        priority: issue.severity === 'critical' ? 'critical' : 'high',
+      }
+    );
+
+    this.remember('data', { maintenanceRequest: result }, ['maintenance', 'emergency'], 9);
+    return result;
+  }
+
+  /**
+   * Request meal service from Restaurant node
+   */
+  async requestMealService(request: {
+    guestCount: number;
+    mealType: 'breakfast' | 'lunch' | 'dinner' | 'snack';
+    cuisine?: string[];
+    dietaryRestrictions?: string[];
+  }): Promise<any> {
+    const restaurantNodes = BaseNode.findNodesByType('ada.restaurant');
+    if (restaurantNodes.length === 0) {
+      return { error: 'No restaurant node available' };
+    }
+
+    const result = await this.requestFromNode(
+      restaurantNodes[0].getIdentity().id,
+      'request-catering',
+      {
+        yachtId: this.identity.id,
+        yachtName: this.vessel.name,
+        guestCount: request.guestCount,
+        mealType: request.mealType,
+        cuisine: request.cuisine || ['Mediterranean'],
+        dietaryRestrictions: request.dietaryRestrictions || [],
+        deliveryTime: new Date(Date.now() + 2 * 60 * 60 * 1000), // 2 hours from now
+      }
+    );
+
+    this.remember('data', { mealRequest: result }, ['restaurant', 'catering'], 7);
+    return result;
+  }
+
+  /**
    * Setup NMEA2000 data processing
    */
   private setupNMEAProcessing(): void {
     // In production, this would connect to actual NMEA2000 network
     // For now, just set up the processing pipeline
     this.emit('nmea-ready');
+  }
+
+  /**
+   * Setup VHF radio event handlers
+   */
+  private setupVHFRadioHandlers(): void {
+    // Handle VHF transmissions
+    this.vhfRadioService.on('transmission:detected', (transmission) => {
+      // Classify the transmission
+      const classification = this.vhfMessageClassifier.classify(transmission);
+
+      // Pass to race mode if active
+      if (this.vhfRaceMode && this.vhfRaceMode.isRaceModeActive()) {
+        this.vhfRaceMode.processTransmission(transmission);
+      }
+
+      // Remember important transmissions
+      if (classification.priority === 'urgent' || classification.priority === 'high') {
+        this.remember('event', {
+          type: 'vhf-transmission',
+          transmission,
+          classification,
+        }, ['vhf', 'radio', classification.type], 8);
+      }
+
+      // Emit for other systems
+      this.emit('vhf:transmission', { transmission, classification });
+    });
+
+    // Handle emergency alerts
+    this.vhfRadioService.on('alert:emergency', (alert) => {
+      this.remember('event', {
+        type: 'emergency-alert',
+        alert,
+      }, ['vhf', 'emergency', 'alert'], 10);
+
+      // Emit critical alert
+      this.emit('alert', {
+        severity: 'critical',
+        source: 'vhf-radio',
+        message: alert.message,
+        data: alert,
+      });
+    });
+
+    // Handle critical alerts
+    this.vhfRadioService.on('alert:critical', (alert) => {
+      this.remember('event', {
+        type: 'critical-alert',
+        alert,
+      }, ['vhf', 'critical', 'alert'], 9);
+
+      this.emit('alert', {
+        severity: 'warning',
+        source: 'vhf-radio',
+        message: alert.message,
+        data: alert,
+      });
+    });
+
+    // Handle location updates from NMEA for VHF auto-tuning
+    this.on('location:update', (location) => {
+      if (location.latitude && location.longitude) {
+        this.vhfRadioService.updateLocation(location.latitude, location.longitude);
+      }
+    });
+
+    this.emit('vhf-ready');
+  }
+
+  /**
+   * Manage VHF radio task
+   */
+  private async manageVHFRadioTask(data: any): Promise<any> {
+    const { action, ...params } = data;
+
+    switch (action) {
+      case 'start-scanner':
+        await this.vhfRadioService.startScanning();
+        return { success: true, message: 'VHF scanner started' };
+
+      case 'stop-scanner':
+        await this.vhfRadioService.stopScanning();
+        return { success: true, message: 'VHF scanner stopped' };
+
+      case 'get-state':
+        return this.vhfRadioService.getState();
+
+      case 'get-transmissions':
+        return this.vhfRadioService.getTransmissions(params.limit || 50);
+
+      case 'get-alerts':
+        return this.vhfRadioService.getAlerts();
+
+      case 'get-statistics':
+        return this.vhfRadioService.getStatistics();
+
+      case 'set-channels':
+        this.vhfRadioService.setActiveChannels(params.channels);
+        return { success: true, message: 'Active channels updated' };
+
+      case 'update-location':
+        this.vhfRadioService.updateLocation(params.latitude, params.longitude);
+        return { success: true, message: 'Location updated' };
+
+      case 'classify-transmission':
+        const transmission = params.transmission;
+        const classification = this.vhfMessageClassifier.classify(transmission);
+        return { transmission, classification };
+
+      case 'export-data':
+        return this.vhfRadioService.exportData();
+
+      case 'activate-race-mode':
+        return this.activateRaceMode(params);
+
+      case 'deactivate-race-mode':
+        return this.deactivateRaceMode();
+
+      case 'get-race-events':
+        if (!this.vhfRaceMode) {
+          return { error: 'Race mode not active' };
+        }
+        return this.vhfRaceMode.getRaceEvents();
+
+      case 'get-race-summary':
+        if (!this.vhfRaceMode) {
+          return { error: 'Race mode not active' };
+        }
+        return this.vhfRaceMode.getRaceSummary();
+
+      default:
+        throw new Error(`Unknown VHF radio action: ${action}`);
+    }
+  }
+
+  /**
+   * Activate race mode for VHF monitoring
+   */
+  private activateRaceMode(params: {
+    raceName: string;
+    committeeChannel?: number;
+    fleetChannel?: number;
+    startTime?: string;
+    courseMarks?: string[];
+  }): any {
+    this.vhfRaceMode = new VHFRaceMode({
+      raceName: params.raceName,
+      raceChannels: [6, 73, 72], // Standard race channels
+      committeeChannel: params.committeeChannel || 73,
+      fleetChannel: params.fleetChannel || 6,
+      startTime: params.startTime ? new Date(params.startTime) : undefined,
+      courseMarks: params.courseMarks,
+    });
+
+    // Setup race event handlers
+    this.setupRaceModeHandlers();
+
+    // Activate race mode
+    this.vhfRaceMode.activate();
+
+    // Set VHF scanner to race channels
+    this.vhfRadioService.setActiveChannels(this.vhfRaceMode.getRaceChannels());
+
+    this.remember('event', {
+      type: 'race-mode-activated',
+      raceName: params.raceName,
+    }, ['vhf', 'race'], 9);
+
+    return {
+      success: true,
+      message: 'Race mode activated',
+      channels: this.vhfRaceMode.getRaceChannels(),
+    };
+  }
+
+  /**
+   * Deactivate race mode
+   */
+  private deactivateRaceMode(): any {
+    if (!this.vhfRaceMode) {
+      return { error: 'Race mode not active' };
+    }
+
+    this.vhfRaceMode.deactivate();
+    this.vhfRaceMode = undefined;
+
+    // Reset to normal channel priority
+    const config = this.vhfRadioService.getStatistics();
+    // Back to geographic mode
+
+    return {
+      success: true,
+      message: 'Race mode deactivated',
+    };
+  }
+
+  /**
+   * Setup race mode event handlers
+   */
+  private setupRaceModeHandlers(): void {
+    if (!this.vhfRaceMode) {
+      return;
+    }
+
+    // Warning signal (5 minutes)
+    this.vhfRaceMode.on('race:warning_signal', (data) => {
+      this.remember('event', {
+        type: 'race-warning-signal',
+        class: data.class,
+        event: data.event,
+      }, ['vhf', 'race', 'start-sequence'], 9);
+
+      this.emit('race:warning', data);
+    });
+
+    // Preparatory signal (4 minutes)
+    this.vhfRaceMode.on('race:preparatory_signal', (data) => {
+      this.remember('event', {
+        type: 'race-preparatory-signal',
+        class: data.class,
+        event: data.event,
+      }, ['vhf', 'race', 'start-sequence'], 9);
+
+      this.emit('race:preparatory', data);
+    });
+
+    // One minute signal
+    this.vhfRaceMode.on('race:one_minute_signal', (data) => {
+      this.remember('event', {
+        type: 'race-one-minute-signal',
+        class: data.class,
+        event: data.event,
+      }, ['vhf', 'race', 'start-sequence'], 10);
+
+      this.emit('race:one_minute', data);
+    });
+
+    // START!
+    this.vhfRaceMode.on('race:start', (data) => {
+      this.remember('event', {
+        type: 'race-start',
+        class: data.class,
+        event: data.event,
+        sequence: data.sequence,
+      }, ['vhf', 'race', 'start'], 10);
+
+      this.emit('race:start', data);
+      this.emit('alert', {
+        severity: 'info',
+        source: 'vhf-race',
+        message: `Race start for ${data.class}!`,
+        data,
+      });
+    });
+
+    // General recall
+    this.vhfRaceMode.on('race:general_recall', (event) => {
+      this.remember('event', {
+        type: 'race-general-recall',
+        event,
+      }, ['vhf', 'race', 'recall'], 9);
+
+      this.emit('race:general_recall', event);
+      this.emit('alert', {
+        severity: 'warning',
+        source: 'vhf-race',
+        message: 'General Recall!',
+        data: event,
+      });
+    });
+
+    // Abandonment
+    this.vhfRaceMode.on('race:abandonment', (event) => {
+      this.remember('event', {
+        type: 'race-abandonment',
+        event,
+      }, ['vhf', 'race', 'abandonment'], 9);
+
+      this.emit('race:abandonment', event);
+      this.emit('alert', {
+        severity: 'warning',
+        source: 'vhf-race',
+        message: 'Race Abandoned',
+        data: event,
+      });
+    });
+
+    // Course change
+    this.vhfRaceMode.on('race:course_change', (event) => {
+      this.remember('event', {
+        type: 'race-course-change',
+        event,
+      }, ['vhf', 'race', 'course'], 8);
+
+      this.emit('race:course_change', event);
+    });
+
+    // Mark rounding
+    this.vhfRaceMode.on('race:mark_rounding', (event) => {
+      this.remember('event', {
+        type: 'race-mark-rounding',
+        event,
+      }, ['vhf', 'race', 'mark'], 7);
+
+      this.emit('race:mark_rounding', event);
+    });
+
+    // Fleet comms
+    this.vhfRaceMode.on('race:fleet_comms', (data) => {
+      this.emit('race:fleet_comms', data);
+    });
+  }
+
+  /**
+   * Setup Observer event handlers
+   */
+  private setupObserverHandlers(): void {
+    // State changes
+    this.observer.on('state:change', (change) => {
+      this.logEvent('Vessel state changed', { from: change.from, to: change.to });
+      this.emit('observer:state-change', change);
+    });
+
+    // State updates
+    this.observer.on('state:update', (state) => {
+      this.emit('observer:state-update', state);
+    });
+
+    // Navigation updates
+    this.observer.on('navigation:update', (data) => {
+      this.emit('observer:navigation-update', data);
+    });
+
+    // Anchor events
+    this.observer.on('anchor:watch:started', (watch) => {
+      this.logEvent('Anchor watch started', watch);
+      this.emit('observer:anchor-watch-started', watch);
+    });
+
+    this.observer.on('anchor:drag', (alert) => {
+      this.logEvent('⚠️ ANCHOR DRAG DETECTED', alert);
+      this.emit('alert', {
+        severity: 'critical',
+        source: 'anchor-watch',
+        message: alert.message,
+        data: alert,
+      });
+    });
+
+    this.observer.on('anchor:holding', (alert) => {
+      this.logEvent('Anchor holding again', alert);
+      this.emit('observer:anchor-holding', alert);
+    });
+
+    // Journey events
+    this.observer.on('journey:started', (journey) => {
+      this.logEvent('Journey started', journey);
+      this.emit('observer:journey-started', journey);
+    });
+
+    this.observer.on('journey:ended', (journey) => {
+      this.logEvent('Journey ended', journey);
+      this.emit('observer:journey-ended', journey);
+    });
+
+    // Log entries
+    this.observer.on('log:entry', (entry) => {
+      this.remember('data', entry, ['logbook', entry.type], 7);
+      this.emit('observer:log-entry', entry);
+    });
+
+    // Away mode notifications
+    this.observer.on('away:notification', async (notification) => {
+      this.logEvent('Away mode notification', notification);
+
+      // Send SMS/Email to vessel owner
+      await this.notificationService.sendUrgentNotification(
+        {
+          name: 'Vessel Owner',
+          email: 'owner@example.com', // Should be configured per vessel
+          phone: '+90-555-XXX-XXXX', // Should be configured per vessel
+        },
+        {
+          subject: `⚠️ ${notification.type} Alert - ${notification.vesselName}`,
+          body: notification.message,
+          priority: 'urgent',
+          timestamp: notification.timestamp,
+        }
+      );
+
+      this.emit('observer:away-notification', notification);
+    });
+  }
+
+  /**
+   * Get Ada Observer instance
+   */
+  getObserver(): AdaObserver {
+    return this.observer;
   }
 
   /**
@@ -429,6 +1070,9 @@ export class SeaNode extends BaseNode {
       vesselState: this.vesselState,
       crew: this.crewManagement.getAllCrew(),
       passengers: this.passengerService.getAllPassengers(),
+      observerState: this.observer.getVesselState(),
+      navigationData: this.observer.getPrimaryNavigationData(),
+      anchorWatch: this.observer.getAnchorWatch(),
     }, null, 2);
   }
 }
