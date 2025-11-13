@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import DateTime, String, Text, Uuid
+from sqlalchemy import DateTime, JSON, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ada.database.base import Base
@@ -64,7 +64,7 @@ class Tenant(Base):
 
     # Metadata
     settings: Mapped[dict[str, Any] | None] = mapped_column(
-        type_=None,  # Will be JSON in PostgreSQL
+        JSON,
         nullable=True,
         comment="Tenant-specific configuration and settings",
     )

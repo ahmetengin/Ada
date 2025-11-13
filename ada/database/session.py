@@ -9,13 +9,22 @@ from ada.config import get_settings
 
 settings = get_settings()
 
-# Create async engine
+# Create async engine with appropriate settings
+engine_kwargs = {
+    "echo": settings.debug,
+}
+
+# Only add pool settings for PostgreSQL (not SQLite)
+if "postgresql" in settings.database_url or "postgres" in settings.database_url:
+    engine_kwargs.update({
+        "pool_size": settings.database_pool_size,
+        "max_overflow": settings.database_max_overflow,
+        "pool_pre_ping": True,
+    })
+
 engine = create_async_engine(
     str(settings.database_url),
-    echo=settings.debug,
-    pool_size=settings.database_pool_size,
-    max_overflow=settings.database_max_overflow,
-    pool_pre_ping=True,
+    **engine_kwargs,
 )
 
 # Create session factory

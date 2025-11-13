@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ada.config import get_settings
 from ada.models import SEALAgent, SEALExperience, SEALMemory
+from ada.services.embeddings import get_embeddings_service
+from ada.services.llm_reflection import get_llm_reflection_service
 from ada.utils.tenant_id_generator import TenantUniqueIdGenerator
 
 settings = get_settings()
@@ -26,10 +28,34 @@ class SEALManager:
     5. Evolution: Continuous improvement through iteration
     """
 
-    def __init__(self, session: AsyncSession):
-        """Initialize SEAL Manager."""
+    def __init__(
+        self,
+        session: AsyncSession,
+        use_embeddings: bool = True,
+        use_llm_reflection: bool = True,
+    ):
+        """
+        Initialize SEAL Manager.
+
+        Args:
+            session: Database session
+            use_embeddings: Whether to use vector embeddings for semantic search
+            use_llm_reflection: Whether to use LLM for intelligent reflection
+        """
         self.session = session
         self.id_generator = TenantUniqueIdGenerator()
+        self.use_embeddings = use_embeddings
+        self.use_llm_reflection = use_llm_reflection
+
+        if use_embeddings:
+            self.embeddings = get_embeddings_service()
+
+        if use_llm_reflection:
+            try:
+                self.llm_reflection = get_llm_reflection_service()
+            except ValueError as e:
+                print(f"Warning: LLM reflection disabled: {e}")
+                self.use_llm_reflection = False
 
     async def create_agent(
         self,
@@ -128,12 +154,57 @@ class SEALManager:
         await self.session.commit()
         await self.session.refresh(experience)
 
+        # Generate and store embedding if enabled
+        if self.use_embeddings:
+            await self._generate_experience_embedding(experience)
+
         # Trigger reflection if needed
         if agent and agent.seal_enabled:
             if agent.experience_count % agent.reflection_frequency == 0:
                 await self.trigger_reflection(agent.id)
 
         return experience
+
+    async def _generate_experience_embedding(self, experience: SEALExperience) -> None:
+        """Generate and store embedding for an experience."""
+        # Create text representation of experience
+        text_parts = []
+        if experience.task_name:
+            text_parts.append(f"Task: {experience.task_name}")
+        if experience.action_taken:
+            text_parts.append(f"Action: {experience.action_taken}")
+        if experience.reasoning:
+            text_parts.append(f"Reasoning: {experience.reasoning}")
+        if experience.outcome:
+            text_parts.append(f"Outcome: {experience.outcome}")
+
+        text = " | ".join(text_parts) if text_parts else "Empty experience"
+
+        # Generate embedding
+        embedding = await self.embeddings.generate_embedding(text)
+
+        # Store in database
+        experience.embedding = embedding
+        await self.session.commit()
+
+        # Store in Qdrant
+        try:
+            collection_name = f"experiences_{experience.tenant_id}".replace("-", "_")
+            await self.embeddings.create_collection(collection_name)
+            await self.embeddings.upsert_embedding(
+                collection_name=collection_name,
+                point_id=str(experience.id),
+                text=text,
+                metadata={
+                    "agent_id": str(experience.agent_id),
+                    "experience_type": experience.experience_type,
+                    "success": experience.success,
+                    "performance_score": experience.performance_score,
+                },
+            )
+        except Exception as e:
+            # Log error but don't fail the operation
+            print(f"Warning: Failed to store embedding in Qdrant: {e}")
 
     async def trigger_reflection(self, agent_id: uuid.UUID) -> list[SEALMemory]:
         """
@@ -192,13 +263,87 @@ class SEALManager:
         experiences: list[SEALExperience],
     ) -> list[SEALMemory]:
         """
-        Analyze experiences to extract learnings.
+        Analyze experiences to extract learnings using LLM or fallback patterns.
 
-        This is a simplified version. In production, this would use
-        AI/LLM to analyze experiences and extract meaningful patterns.
+        Uses LLM-powered analysis when available, falls back to pattern matching.
         """
         memories = []
 
+        # Try LLM-powered analysis first
+        if self.use_llm_reflection:
+            try:
+                # Prepare agent context
+                agent_context = {
+                    "name": agent.name,
+                    "type": agent.agent_type,
+                    "capabilities": agent.capabilities,
+                    "specializations": agent.specializations,
+                    "total_tasks": agent.total_tasks,
+                    "success_rate": agent.calculate_success_rate(),
+                }
+
+                # Analyze with LLM
+                analysis = await self.llm_reflection.analyze_experiences(
+                    experiences, agent_context
+                )
+
+                # Create memories from patterns
+                for pattern in analysis.get("patterns", []):
+                    memory_data = await self.llm_reflection.create_memory_from_insight(
+                        pattern, pattern_type="pattern"
+                    )
+                    memory = await self._create_memory_from_data(
+                        agent=agent,
+                        memory_data=memory_data,
+                        source_experiences=experiences,
+                        derivation_method="llm_analysis",
+                    )
+                    if memory:
+                        memories.append(memory)
+
+                # Create memories from insights
+                for insight in analysis.get("insights", []):
+                    memory_data = await self.llm_reflection.create_memory_from_insight(
+                        insight, pattern_type="insight"
+                    )
+                    memory = await self._create_memory_from_data(
+                        agent=agent,
+                        memory_data=memory_data,
+                        source_experiences=experiences,
+                        derivation_method="llm_insight",
+                    )
+                    if memory:
+                        memories.append(memory)
+
+                # Create memories from learned skills
+                for skill in analysis.get("skills_learned", []):
+                    memory_data = await self.llm_reflection.create_memory_from_insight(
+                        skill, pattern_type="skill"
+                    )
+                    memory = await self._create_memory_from_data(
+                        agent=agent,
+                        memory_data=memory_data,
+                        source_experiences=experiences,
+                        derivation_method="skill_extraction",
+                    )
+                    if memory:
+                        memories.append(memory)
+
+                        # Add skill to agent
+                        if agent.skills_learned is None:
+                            agent.skills_learned = []
+                        skill_name = skill.get("skill_name", "Unknown skill")
+                        if skill_name not in agent.skills_learned:
+                            agent.skills_learned.append(skill_name)
+
+                # If LLM analysis produced memories, return them
+                if memories:
+                    return memories
+
+            except Exception as e:
+                print(f"Warning: LLM analysis failed, using fallback: {e}")
+
+        # Fallback to simple pattern matching
         # Pattern 1: Extract successful strategies
         successful_experiences = [e for e in experiences if e.success is True]
         if successful_experiences:
@@ -240,6 +385,43 @@ class SEALManager:
 
         return memories
 
+    async def _create_memory_from_data(
+        self,
+        agent: SEALAgent,
+        memory_data: dict[str, Any],
+        source_experiences: list[SEALExperience],
+        derivation_method: str,
+    ) -> Optional[SEALMemory]:
+        """Create a memory from LLM-generated data."""
+        if not memory_data.get("content"):
+            return None
+
+        memory = SEALMemory(
+            tenant_id=agent.tenant_id,
+            agent_id=agent.id,
+            tenant_unique_id=self.id_generator.generate_unique_id(
+                tenant_id=agent.tenant_id,
+                entity_type="seal_memory",
+            ),
+            memory_type=memory_data.get("category", "pattern"),
+            category=memory_data.get("category", "general"),
+            title=memory_data.get("title", "Learned pattern"),
+            content=memory_data.get("content", ""),
+            source_experiences=[str(e.id) for e in source_experiences],
+            derivation_method=derivation_method,
+            confidence=memory_data.get("confidence", 0.7),
+            importance_score=memory_data.get("importance_score", 0.5),
+        )
+
+        self.session.add(memory)
+        await self.session.flush()
+
+        # Generate embedding if enabled
+        if self.use_embeddings:
+            await self._generate_memory_embedding(memory)
+
+        return memory
+
     async def _create_memory_from_pattern(
         self,
         agent: SEALAgent,
@@ -270,7 +452,44 @@ class SEALManager:
         )
 
         self.session.add(memory)
+        await self.session.flush()  # Flush to get the ID
+
+        # Generate and store embedding if enabled
+        if self.use_embeddings:
+            await self._generate_memory_embedding(memory)
+
         return memory
+
+    async def _generate_memory_embedding(self, memory: SEALMemory) -> None:
+        """Generate and store embedding for a memory."""
+        # Create text representation of memory
+        text = f"Title: {memory.title} | Content: {memory.content}"
+
+        # Generate embedding
+        embedding = await self.embeddings.generate_embedding(text)
+
+        # Store in database
+        memory.embedding = embedding
+
+        # Store in Qdrant
+        try:
+            collection_name = f"memories_{memory.tenant_id}".replace("-", "_")
+            await self.embeddings.create_collection(collection_name)
+            await self.embeddings.upsert_embedding(
+                collection_name=collection_name,
+                point_id=str(memory.id),
+                text=text,
+                metadata={
+                    "agent_id": str(memory.agent_id),
+                    "memory_type": memory.memory_type,
+                    "category": memory.category,
+                    "importance_score": memory.importance_score,
+                    "confidence": memory.confidence,
+                },
+            )
+        except Exception as e:
+            # Log error but don't fail the operation
+            print(f"Warning: Failed to store memory embedding in Qdrant: {e}")
 
     def _summarize_successful_patterns(
         self,
@@ -367,29 +586,86 @@ class SEALManager:
         context: str,
         limit: int = 5,
         memory_type: Optional[str] = None,
+        score_threshold: float = 0.5,
     ) -> list[SEALMemory]:
         """
-        Retrieve relevant memories for a given context.
+        Retrieve relevant memories for a given context using semantic search.
 
-        In production, this would use vector similarity search with embeddings.
-        For now, we use simple relevance scoring.
+        Args:
+            agent_id: Agent ID
+            context: Context string for similarity search
+            limit: Maximum number of memories to return
+            memory_type: Optional filter by memory type
+            score_threshold: Minimum similarity score (0-1)
+
+        Returns:
+            List of relevant memories, ordered by relevance
         """
-        stmt = (
-            select(SEALMemory)
-            .where(
-                SEALMemory.agent_id == agent_id,
-                SEALMemory.is_active == True,
+        # Get agent to find tenant_id
+        agent = await self.session.get(SEALAgent, agent_id)
+        if not agent:
+            return []
+
+        memories = []
+
+        # Try semantic search if embeddings are enabled and context is provided
+        if self.use_embeddings and context and context.strip():
+            try:
+                collection_name = f"memories_{agent.tenant_id}".replace("-", "_")
+
+                # Search in Qdrant
+                results = await self.embeddings.search_similar(
+                    collection_name=collection_name,
+                    query=context,
+                    limit=limit * 2,  # Get more initially for filtering
+                    score_threshold=score_threshold,
+                )
+
+                # Retrieve memories from database
+                memory_ids = [result["id"] for result in results]
+                if memory_ids:
+                    stmt = select(SEALMemory).where(
+                        SEALMemory.id.in_([uuid.UUID(mid) for mid in memory_ids]),
+                        SEALMemory.agent_id == agent_id,
+                        SEALMemory.is_active == True,
+                    )
+
+                    if memory_type:
+                        stmt = stmt.where(SEALMemory.memory_type == memory_type)
+
+                    result = await self.session.execute(stmt)
+                    db_memories = {str(m.id): m for m in result.scalars().all()}
+
+                    # Order by search results
+                    for search_result in results:
+                        if search_result["id"] in db_memories:
+                            memory = db_memories[search_result["id"]]
+                            memories.append(memory)
+                            if len(memories) >= limit:
+                                break
+
+            except Exception as e:
+                print(f"Warning: Semantic search failed, falling back to simple search: {e}")
+                memories = []
+
+        # Fallback to importance-based retrieval if semantic search failed or disabled
+        if not memories:
+            stmt = (
+                select(SEALMemory)
+                .where(
+                    SEALMemory.agent_id == agent_id,
+                    SEALMemory.is_active == True,
+                )
+                .order_by(SEALMemory.importance_score.desc())
             )
-            .order_by(SEALMemory.importance_score.desc())
-        )
 
-        if memory_type:
-            stmt = stmt.where(SEALMemory.memory_type == memory_type)
+            if memory_type:
+                stmt = stmt.where(SEALMemory.memory_type == memory_type)
 
-        stmt = stmt.limit(limit)
+            stmt = stmt.limit(limit)
 
-        result = await self.session.execute(stmt)
-        memories = list(result.scalars().all())
+            result = await self.session.execute(stmt)
+            memories = list(result.scalars().all())
 
         # Update usage statistics
         for memory in memories:
