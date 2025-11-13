@@ -19,11 +19,35 @@ export interface LegalNodeConfig extends Omit<BaseNodeOptions, 'type' | 'capabil
   };
 }
 
+interface PaymentScheduleItem {
+  date: Date;
+  amount: number;
+  description: string;
+  status: 'pending' | 'paid' | 'overdue' | 'cancelled';
+  paidAt?: Date;
+  invoiceNumber?: string;
+}
+
+interface ContractFinancialTerms {
+  direction: 'receivable' | 'payable'; // Are we receiving money or paying?
+  invoicingParty: 'provider' | 'client'; // Who issues the invoice?
+  totalAmount: number;
+  currency: 'TRY' | 'EUR' | 'USD' | 'GBP' | 'CHF';
+  paymentSchedule: PaymentScheduleItem[];
+  paymentMethod?: 'bank-transfer' | 'cash' | 'credit-card';
+  lateFeeRate?: number; // Gecikme faizi (%)
+  advancePayment?: {
+    amount: number;
+    dueDate: Date;
+  };
+}
+
 interface LegalContract {
   id: string;
-  type: 'berth-rental' | 'crew-employment' | 'charter' | 'service' | 'nda' | 'partnership';
+  type: 'berth-rental' | 'crew-employment' | 'charter' | 'service' | 'nda' | 'partnership' | 'supplier' | 'venue-rental' | 'hotel-agreement';
   parties: ContractParty[];
   terms: ContractTerm[];
+  financialTerms?: ContractFinancialTerms; // Financial obligations
   language: 'tr' | 'en' | 'multi';
   jurisdiction: string; // 'Turkey', 'UK', 'International'
   status: 'draft' | 'review' | 'signed' | 'active' | 'expired' | 'terminated';
@@ -241,6 +265,10 @@ export class LegalNode extends BaseNode {
     customTerms?: string[];
     language?: 'tr' | 'en';
     jurisdiction?: string;
+    financialTerms?: Omit<ContractFinancialTerms, 'paymentSchedule'> & {
+      paymentSchedule?: ContractFinancialTerms['paymentSchedule'];
+      installments?: number; // Auto-generate payment schedule with N installments
+    };
   }): Promise<LegalContract> {
     // AI learns from previous contracts of same type
     const similarContracts = Array.from(this.contracts.values())
@@ -264,6 +292,34 @@ export class LegalNode extends BaseNode {
       });
     }
 
+    // Build financial terms if provided
+    let financialTerms: ContractFinancialTerms | undefined;
+    if (data.financialTerms) {
+      // Auto-generate payment schedule if installments specified
+      let paymentSchedule: PaymentScheduleItem[];
+
+      if (data.financialTerms.installments && data.financialTerms.installments > 0) {
+        paymentSchedule = this.generatePaymentSchedule(
+          data.financialTerms.totalAmount,
+          data.financialTerms.installments,
+          data.financialTerms.advancePayment
+        );
+      } else {
+        paymentSchedule = data.financialTerms.paymentSchedule || [];
+      }
+
+      financialTerms = {
+        direction: data.financialTerms.direction,
+        invoicingParty: data.financialTerms.invoicingParty,
+        totalAmount: data.financialTerms.totalAmount,
+        currency: data.financialTerms.currency,
+        paymentSchedule,
+        paymentMethod: data.financialTerms.paymentMethod,
+        lateFeeRate: data.financialTerms.lateFeeRate,
+        advancePayment: data.financialTerms.advancePayment,
+      };
+    }
+
     const contract: LegalContract = {
       id: uuidv4(),
       type: data.type,
@@ -273,6 +329,7 @@ export class LegalNode extends BaseNode {
         signatureStatus: 'pending',
       })),
       terms,
+      financialTerms,
       language: data.language || 'tr',
       jurisdiction: data.jurisdiction || 'Turkey',
       status: 'draft',
@@ -286,6 +343,11 @@ export class LegalNode extends BaseNode {
     this.learnFromContract(contract);
 
     this.remember('data', { contract, learnedFrom: similarContracts.length }, ['contract', 'ai-learning'], 8);
+
+    // Notify finance about contract financial obligations
+    if (financialTerms) {
+      await this.notifyFinanceAboutContract(contract);
+    }
 
     // Create invoice for legal services via Finance node
     this.createInvoiceForLegalService(contract, data.parties)
@@ -656,6 +718,116 @@ export class LegalNode extends BaseNode {
       importance: 'critical',
       learnedFrom: 'maritime-contracts-2020-2024',
     });
+  }
+
+  /**
+   * Generate payment schedule with equal installments
+   */
+  private generatePaymentSchedule(
+    totalAmount: number,
+    installments: number,
+    advancePayment?: { amount: number; dueDate: Date }
+  ): PaymentScheduleItem[] {
+    const schedule: PaymentScheduleItem[] = [];
+
+    // Add advance payment if specified
+    if (advancePayment) {
+      schedule.push({
+        date: advancePayment.dueDate,
+        amount: advancePayment.amount,
+        description: 'Ön ödeme (Advance payment)',
+        status: 'pending',
+      });
+      totalAmount -= advancePayment.amount;
+    }
+
+    // Divide remaining amount into equal installments
+    const installmentAmount = Math.round((totalAmount / installments) * 100) / 100;
+    let remainingAmount = totalAmount;
+
+    for (let i = 0; i < installments; i++) {
+      const isLast = i === installments - 1;
+      const amount = isLast ? remainingAmount : installmentAmount;
+
+      const dueDate = new Date();
+      dueDate.setMonth(dueDate.getMonth() + i + 1);
+
+      schedule.push({
+        date: dueDate,
+        amount,
+        description: `Taksit ${i + 1}/${installments} (Installment ${i + 1}/${installments})`,
+        status: 'pending',
+      });
+
+      remainingAmount -= amount;
+    }
+
+    return schedule;
+  }
+
+  /**
+   * Notify finance node about contract financial obligations
+   */
+  private async notifyFinanceAboutContract(contract: LegalContract): Promise<void> {
+    if (!contract.financialTerms) return;
+
+    const financeNodes = BaseNode.findNodesByType('ada.finance');
+    if (financeNodes.length === 0) {
+      this.logger.warn('No finance node available for contract notification');
+      return;
+    }
+
+    try {
+      const { financialTerms } = contract;
+
+      // Find the other party (not us)
+      const otherParty = contract.parties.find(p =>
+        financialTerms.direction === 'receivable'
+          ? p.role === 'client'
+          : p.role === 'provider'
+      );
+
+      if (!otherParty) {
+        this.logger.warn('Could not determine other party in contract');
+        return;
+      }
+
+      // Notify finance based on direction
+      const messageType = financialTerms.direction === 'receivable'
+        ? 'register-receivable-contract'
+        : 'register-payable-contract';
+
+      await this.requestFromNode(
+        financeNodes[0].getIdentity().id,
+        messageType,
+        {
+          contractId: contract.id,
+          contractType: contract.type,
+          direction: financialTerms.direction,
+          counterparty: {
+            name: otherParty.name,
+            taxId: otherParty.taxId,
+          },
+          totalAmount: financialTerms.totalAmount,
+          currency: financialTerms.currency,
+          paymentSchedule: financialTerms.paymentSchedule,
+          paymentMethod: financialTerms.paymentMethod,
+          lateFeeRate: financialTerms.lateFeeRate,
+        }
+      );
+
+      this.logger.info('Finance notified about contract', {
+        contractId: contract.id,
+        direction: financialTerms.direction,
+        amount: financialTerms.totalAmount,
+      });
+
+    } catch (error: any) {
+      this.logger.error('Failed to notify finance about contract', {
+        contractId: contract.id,
+        error: error.message,
+      });
+    }
   }
 
   /**
