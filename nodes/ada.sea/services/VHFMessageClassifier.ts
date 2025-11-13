@@ -41,7 +41,7 @@ export interface EmergencyDetails {
 export class VHFMessageClassifier {
   // Emergency keywords (ITU standard)
   private static EMERGENCY_KEYWORDS = {
-    distress: ['mayday', 'sinking', 'fire aboard', 'collision', 'grounding', 'abandoning ship'],
+    distress: ['mayday', 'sinking', 'fire aboard', 'grounding', 'abandoning ship'],
     urgency: ['pan pan', 'medical emergency', 'man overboard', 'engine failure'],
     safety: ['securite', 'weather warning', 'navigation hazard', 'safety broadcast'],
   };
@@ -50,7 +50,7 @@ export class VHFMessageClassifier {
   private static MARINA_PATTERNS = {
     berth_request: /berth|mooring|slip|docking|berthing/i,
     service_request: /fuel|water|electricity|pump.?out|provisions/i,
-    arrival: /arriving|eta|approach|inbound/i,
+    arrival: /arriving|eta|approaching.*marina|inbound/i,
     departure: /departing|leaving|cast.?off|outbound/i,
   };
 
@@ -87,9 +87,19 @@ export class VHFMessageClassifier {
     // 3. Content-based classification
     const contentType = this.classifyByContent(transcription);
 
-    // 4. Combine results
-    const type = contentType || channelType;
-    const confidence = contentType ? 0.8 : 0.6;
+    // 4. Combine results - prioritize channel for specific types, content otherwise
+    let type: VHFMessageType;
+    let confidence: number;
+
+    // For emergency/coast_guard channels, prioritize channel unless content has specific signal
+    if ((channelType === 'emergency' || channelType === 'coast_guard') && contentType === 'intership') {
+      type = channelType;
+      confidence = 0.7;
+    } else {
+      type = contentType || channelType;
+      confidence = contentType ? 0.8 : 0.6;
+    }
+
     const priority = this.determinePriority(type, transmission.channel);
 
     return {
@@ -216,6 +226,36 @@ export class VHFMessageClassifier {
     const keywords: string[] = [];
     const lower = transcription.toLowerCase();
 
+    // Extract pattern-specific keywords based on message type
+    if (type === 'marina') {
+      for (const [key, pattern] of Object.entries(VHFMessageClassifier.MARINA_PATTERNS)) {
+        const match = lower.match(pattern);
+        if (match) {
+          // Extract the first matched word from the pattern
+          const words = ['berth', 'mooring', 'fuel', 'water', 'arriving', 'departing', 'eta', 'electricity', 'pump'];
+          for (const word of words) {
+            if (lower.includes(word) && !keywords.includes(word)) {
+              keywords.push(word);
+            }
+          }
+        }
+      }
+    }
+
+    if (type === 'safety') {
+      for (const [key, pattern] of Object.entries(VHFMessageClassifier.NAVIGATION_PATTERNS)) {
+        const match = lower.match(pattern);
+        if (match) {
+          const words = ['passing', 'traffic', 'crossing', 'anchor', 'bridge'];
+          for (const word of words) {
+            if (lower.includes(word) && !keywords.includes(word)) {
+              keywords.push(word);
+            }
+          }
+        }
+      }
+    }
+
     // Common maritime keywords
     const maritimeKeywords = [
       'vessel', 'ship', 'yacht', 'boat', 'marina', 'port', 'berth',
@@ -224,7 +264,7 @@ export class VHFMessageClassifier {
     ];
 
     for (const keyword of maritimeKeywords) {
-      if (lower.includes(keyword)) {
+      if (lower.includes(keyword) && !keywords.includes(keyword)) {
         keywords.push(keyword);
       }
     }
@@ -238,11 +278,31 @@ export class VHFMessageClassifier {
   private extractEntities(transcription: string): ClassificationResult['entities'] {
     const entities: ClassificationResult['entities'] = {};
 
-    // Extract vessel names (simplified - looks for capital words after "vessel", "yacht", etc.)
-    const vesselPattern = /(?:vessel|yacht|ship|boat)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/g;
-    const vesselMatches = [...transcription.matchAll(vesselPattern)];
-    if (vesselMatches.length > 0) {
-      entities.vesselNames = vesselMatches.map(m => m[1]);
+    // Extract vessel names (case-insensitive for vessel type, but requires capitalized names)
+    const names: string[] = [];
+
+    // Build pattern that matches vessel types in any case, but only capitalized names
+    // Pattern: (?:Vessel|vessel|VESSEL|Yacht|yacht|...) followed by capitalized word(s)
+    const vesselTypes = ['vessel', 'yacht', 'ship', 'boat'];
+    const typeVariants = vesselTypes.flatMap(t => [
+      t.charAt(0).toUpperCase() + t.slice(1),  // Vessel
+      t.toLowerCase(),                          // vessel
+      t.toUpperCase()                           // VESSEL
+    ]);
+
+    const pattern = new RegExp(
+      `(?:${typeVariants.join('|')})\\s+([A-Z][a-zöüışğç]+(?:\\s+[A-Z][a-zöüışğç]+)?)`,
+      'g'
+    );
+
+    for (const match of transcription.matchAll(pattern)) {
+      if (match[1]) {
+        names.push(match[1]);
+      }
+    }
+
+    if (names.length > 0) {
+      entities.vesselNames = names;
     }
 
     // Extract channel references
@@ -259,8 +319,8 @@ export class VHFMessageClassifier {
       entities.callsigns = callsignMatches.map(m => m[1]).slice(0, 3);
     }
 
-    // Extract location names (simplified - looks for capital words)
-    const locationPattern = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+(?:Marina|Port|Harbor|Bay|Anchorage)/g;
+    // Extract location names (supports Turkish characters like ö, ı, ş)
+    const locationPattern = /\b([A-ZÖÜİŞĞÇ][a-zöüışğç]+(?:\s+[A-ZÖÜİŞĞÇ][a-zöüışğç]+)*)\s+(?:Marina|Port|Harbor|Bay|Anchorage)/gi;
     const locationMatches = [...transcription.matchAll(locationPattern)];
     if (locationMatches.length > 0) {
       entities.locations = locationMatches.map(m => m[0]);

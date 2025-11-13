@@ -17,6 +17,7 @@ import {
   NodeMessage,
 } from './types.js';
 import { getEventEmitter } from '../observability/hooks/EventEmitter.js';
+import { createLogger, Logger as LoggerClass } from './utils/Logger.js';
 
 export interface BaseNodeOptions {
   name: string;
@@ -41,9 +42,10 @@ export abstract class BaseNode extends EventEmitter {
   // State
   protected state: NodeState;
 
-  // Observability
+  // Observability and Logging
   private observabilityEmitter = getEventEmitter();
   private sessionId: string;
+  protected logger: LoggerClass;
 
   // Registry of all nodes
   private static nodeRegistry: Map<string, BaseNode> = new Map();
@@ -66,6 +68,9 @@ export abstract class BaseNode extends EventEmitter {
 
     // Initialize session ID (from environment or generate)
     this.sessionId = process.env.ADA_SESSION_ID || `ada-${Date.now()}-${uuidv4().slice(0, 8)}`;
+
+    // Initialize logger
+    this.logger = createLogger(`${options.type}:${options.name}`);
 
     // Initialize core systems
     this.memory = new NodeMemory();
@@ -524,6 +529,13 @@ export abstract class BaseNode extends EventEmitter {
       'ada.marina': 0,
       'ada.travel': 0,
       'ada.congress': 0,
+      'ada.finance': 0,
+      'ada.maintenance': 0,
+      'ada.weather': 0,
+      'ada.legal': 0,
+      'ada.restaurant': 0,
+      'ada.customer': 0,
+      'ada.hukuk': 0,
     };
 
     let totalClones = 0;

@@ -190,6 +190,77 @@
         </div>
       </div>
 
+      <!-- Ada Observer View -->
+      <div v-show="activeTab === 'observer'" class="tab-content observer-cockpit">
+        <div class="cockpit-header">
+          <h2>✈️ ADA OBSERVER COCKPIT</h2>
+          <p class="cockpit-subtitle">AVIATION-STYLE INSTRUMENT PANEL FOR YACHT MONITORING</p>
+        </div>
+
+        <CockpitDisplay :apiUrl="API_URL" />
+
+        <!-- Optional: Classic View Toggle -->
+        <div class="view-toggle">
+          <button class="toggle-btn" @click="showClassicView = !showClassicView">
+            {{ showClassicView ? '✈️ Switch to Cockpit View' : '🧭 Switch to Classic View' }}
+          </button>
+        </div>
+
+        <!-- Classic View (Hidden by default) -->
+        <div v-show="showClassicView" class="classic-view">
+          <PrimaryNavigationDisplay />
+
+          <!-- Aegean-Specific Widgets -->
+          <div class="aegean-section">
+            <div class="section-title">
+              <h3>🌊 Aegean Intelligence</h3>
+              <p>Smart features designed for the Aegean Sea</p>
+            </div>
+            <div class="aegean-widgets-grid">
+              <MeltemWidget :apiUrl="API_URL" />
+              <GreekIslandsWidget
+                :apiUrl="API_URL"
+                :currentPosition="{ latitude: 37.0, longitude: 27.5 }"
+              />
+              <TurkishMarinaWidget
+                :apiUrl="API_URL"
+                :currentPosition="{ latitude: 37.0, longitude: 27.5 }"
+              />
+            </div>
+          </div>
+
+          <div class="observer-features-grid">
+            <div class="feature-card">
+              <div class="feature-icon">⚓</div>
+              <h3>Smart Anchor Watch</h3>
+              <p>Intelligent anchor monitoring with tide awareness</p>
+              <button class="feature-btn">Coming Soon</button>
+            </div>
+
+            <div class="feature-card">
+              <div class="feature-icon">📔</div>
+              <h3>Automatic Logbook</h3>
+              <p>Voice-enabled logging with photo support</p>
+              <button class="feature-btn">Coming Soon</button>
+            </div>
+
+            <div class="feature-card">
+              <div class="feature-icon">🔧</div>
+              <h3>Maintenance</h3>
+              <p>Track tasks, costs, and schedules</p>
+              <button class="feature-btn">Coming Soon</button>
+            </div>
+
+            <div class="feature-card">
+              <div class="feature-icon">📱</div>
+              <h3>Away Mode</h3>
+              <p>SMS/Email notifications when off-boat</p>
+              <button class="feature-btn">Coming Soon</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- VHF Radio View -->
       <div v-show="activeTab === 'vhf'" class="tab-content">
         <VHFMonitor />
@@ -202,6 +273,11 @@
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue';
 import { formatDistanceToNow, format } from 'date-fns';
 import VHFMonitor from './components/VHFMonitor.vue';
+import PrimaryNavigationDisplay from './components/PrimaryNavigationDisplay.vue';
+import CockpitDisplay from './components/CockpitDisplay.vue';
+import MeltemWidget from './components/MeltemWidget.vue';
+import GreekIslandsWidget from './components/GreekIslandsWidget.vue';
+import TurkishMarinaWidget from './components/TurkishMarinaWidget.vue';
 
 // API Configuration
 const API_URL = 'http://localhost:8765';
@@ -211,6 +287,7 @@ const WS_URL = 'ws://localhost:8765/stream';
 const activeTab = ref('overview');
 const wsConnected = ref(false);
 const autoScroll = ref(true);
+const showClassicView = ref(false);
 const stats = ref({
   total_agents: 0,
   active_agents: 0,
@@ -230,6 +307,7 @@ let ws: WebSocket | null = null;
 // Tabs
 const tabs = [
   { id: 'overview', label: 'Overview', icon: '📊' },
+  { id: 'observer', label: 'Ada Observer Cockpit', icon: '✈️' },
   { id: 'agents', label: 'Agents', icon: '🤖' },
   { id: 'events', label: 'Events', icon: '📡' },
   { id: 'sessions', label: 'Sessions', icon: '🔗' },
@@ -953,5 +1031,188 @@ onMounted(() => {
 
 .events-list::-webkit-scrollbar-thumb:hover {
   background: rgba(96, 165, 250, 0.7);
+}
+
+/* Ada Observer Styles */
+.observer-header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.observer-header h2 {
+  color: #e0e0e0;
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+}
+
+.observer-subtitle {
+  color: #a0a0a0;
+  font-size: 1rem;
+}
+
+.observer-features-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
+  margin-top: 2rem;
+}
+
+.feature-card {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 2rem;
+  text-align: center;
+  transition: all 0.2s;
+}
+
+.feature-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(96, 165, 250, 0.3);
+  box-shadow: 0 8px 24px rgba(96, 165, 250, 0.15);
+}
+
+.feature-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+}
+
+.feature-card h3 {
+  color: #e0e0e0;
+  font-size: 1.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.feature-card p {
+  color: #a0a0a0;
+  font-size: 0.875rem;
+  margin-bottom: 1.5rem;
+}
+
+.feature-btn {
+  background: rgba(96, 165, 250, 0.1);
+  border: 1px solid #60a5fa;
+  color: #60a5fa;
+  padding: 0.5rem 1.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.feature-btn:hover {
+  background: rgba(96, 165, 250, 0.2);
+  transform: scale(1.05);
+}
+
+/* Aegean Section */
+.aegean-section {
+  margin: 3rem 0;
+  padding: 2rem;
+  background: linear-gradient(135deg, rgba(30, 58, 138, 0.1) 0%, rgba(29, 78, 216, 0.05) 100%);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: 16px;
+}
+
+.section-title {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.section-title h3 {
+  color: #60a5fa;
+  font-size: 1.75rem;
+  margin-bottom: 0.5rem;
+  font-weight: 700;
+}
+
+.section-title p {
+  color: #93c5fd;
+  font-size: 1rem;
+  font-weight: 400;
+}
+
+.aegean-widgets-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+  gap: 2rem;
+}
+
+@media (max-width: 768px) {
+  .aegean-widgets-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .aegean-section {
+    padding: 1rem;
+  }
+}
+
+/* Cockpit Styles */
+.observer-cockpit {
+  background: #000;
+  border-radius: 8px;
+  padding: 0;
+}
+
+.cockpit-header {
+  text-align: center;
+  padding: 2rem 2rem 1rem;
+  background: linear-gradient(180deg, #000 0%, #001a00 100%);
+  border-bottom: 2px solid #00ff00;
+}
+
+.cockpit-header h2 {
+  color: #00ff00;
+  font-size: 2rem;
+  font-weight: 700;
+  font-family: 'Courier New', monospace;
+  letter-spacing: 0.2em;
+  margin-bottom: 0.5rem;
+  text-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+}
+
+.cockpit-subtitle {
+  color: #00ff00;
+  font-size: 0.875rem;
+  font-family: 'Courier New', monospace;
+  letter-spacing: 0.1em;
+  opacity: 0.7;
+}
+
+.view-toggle {
+  text-align: center;
+  padding: 1rem;
+  background: #000;
+  border-top: 1px solid #003300;
+}
+
+.toggle-btn {
+  background: rgba(0, 255, 0, 0.1);
+  border: 2px solid #00ff00;
+  color: #00ff00;
+  padding: 0.75rem 2rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 700;
+  font-family: 'Courier New', monospace;
+  letter-spacing: 0.05em;
+  transition: all 0.2s;
+  text-transform: uppercase;
+}
+
+.toggle-btn:hover {
+  background: rgba(0, 255, 0, 0.2);
+  box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
+  transform: scale(1.05);
+}
+
+.classic-view {
+  padding: 2rem;
+  background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+  border-radius: 8px;
+  margin-top: 1rem;
 }
 </style>

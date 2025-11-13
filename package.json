@@ -8,6 +8,8 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsx watch examples/ecosystem-demo.ts",
+    "demo:legal": "tsx examples/legal-consultation-demo.ts",
+    "demo:mcp": "tsx examples/mcp-optimization-demo.ts",
     "test": "jest"
   },
   "keywords": [
@@ -17,21 +19,25 @@
     "marina",
     "travel",
     "congress",
+    "legal",
+    "turkish-law",
     "automation"
   ],
   "author": "Ada Ecosystem",
   "license": "MIT",
   "dependencies": {
-    "uuid": "^9.0.1",
+    "axios": "^1.13.2",
+    "date-fns": "^3.0.0",
     "eventemitter3": "^5.0.1",
-    "date-fns": "^3.0.0"
+    "uuid": "^9.0.1"
   },
   "devDependencies": {
+    "@types/jest": "^29.5.14",
     "@types/node": "^20.10.0",
     "@types/uuid": "^9.0.7",
-    "typescript": "^5.3.3",
-    "tsx": "^4.7.0",
     "jest": "^29.7.0",
-    "@types/jest": "^29.5.11"
+    "ts-jest": "^29.4.5",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
   }
 }

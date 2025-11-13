@@ -14,9 +14,11 @@ import { VoyagePlanning } from './services/VoyagePlanning.js';
 import { VHFRadioService } from './services/VHFRadioService.js';
 import { VHFMessageClassifier } from './services/VHFMessageClassifier.js';
 import { VHFRaceMode } from './services/VHFRaceMode.js';
+import { AdaObserver } from './services/AdaObserver.js';
+import { NotificationService } from './services/NotificationService.js';
 
 export interface SeaNodeConfig extends Omit<BaseNodeOptions, 'type' | 'capabilities'> {
-  vessel: VesselData;
+  vessel?: VesselData;
   name: string;
 }
 
@@ -33,6 +35,8 @@ export class SeaNode extends BaseNode {
   private vhfRadioService: VHFRadioService;
   private vhfMessageClassifier: VHFMessageClassifier;
   private vhfRaceMode?: VHFRaceMode;
+  private observer: AdaObserver; // Intelligent vessel monitoring
+  private notificationService: NotificationService;
 
   // State
   private currentVoyage?: VoyagePlan;
@@ -40,6 +44,17 @@ export class SeaNode extends BaseNode {
   private nmeaDataBuffer: ParsedNMEAData[] = [];
 
   constructor(config: SeaNodeConfig) {
+    // Provide default vessel config if not specified (e.g., during cloning)
+    const defaultVessel: VesselData = config.vessel || {
+      name: config.name || 'Unknown Vessel',
+      imo: 'IMO0000000',
+      mmsi: '000000000',
+      length: 24,
+      beam: 6,
+      draft: 2.5,
+      type: 'Sailing Yacht',
+    };
+
     super({
       ...config,
       type: 'ada.sea',
@@ -55,6 +70,11 @@ export class SeaNode extends BaseNode {
           'marina-communication',
           'vhf-radio-monitoring',
           'emergency-detection',
+          'vessel-state-intelligence',
+          'smart-anchor-watch',
+          'automatic-logbook',
+          'maintenance-management',
+          'away-mode-notifications',
         ],
         services: [
           'vessel-monitoring',
@@ -64,6 +84,9 @@ export class SeaNode extends BaseNode {
           'reservation-management',
           'vhf-scanner',
           'radio-transcription',
+          'ada-observer',
+          'primary-navigation-display',
+          'smart-monitoring',
         ],
         integrations: [
           'nmea2000',
@@ -76,7 +99,7 @@ export class SeaNode extends BaseNode {
       },
     });
 
-    this.vessel = config.vessel;
+    this.vessel = defaultVessel;
 
     // Initialize services
     this.nmea2000Parser = new NMEA2000Parser();
@@ -92,6 +115,24 @@ export class SeaNode extends BaseNode {
       enableSTT: true,
     });
     this.vhfMessageClassifier = new VHFMessageClassifier();
+
+    // Initialize Ada Observer
+    this.observer = new AdaObserver({
+      vesselName: defaultVessel.name,
+      bowRollerHeight: 1.5, // Default 1.5m - should be configurable
+      enableAutoLogging: true,
+      enableStateDetection: true,
+    });
+
+    // Initialize Notification Service
+    this.notificationService = new NotificationService({
+      enabled: true,
+      emailProvider: 'smtp',
+      smsProvider: 'sms-gateway',
+    });
+
+    // Setup observer event handlers
+    this.setupObserverHandlers();
   }
 
   /**
@@ -102,6 +143,9 @@ export class SeaNode extends BaseNode {
 
     // Set up message handlers for marina communication
     this.setupMarinaHandlers();
+
+    // Set up cross-node collaboration
+    this.setupCrossNodeCollaboration();
 
     // Set up NMEA2000 data processing
     this.setupNMEAProcessing();
@@ -180,6 +224,33 @@ export class SeaNode extends BaseNode {
 
       // Update vessel state
       this.vesselState = this.nmea2000Parser.aggregateToVesselState(this.nmeaDataBuffer);
+
+      // Update Observer with navigation data
+      if (this.vesselState) {
+        this.observer.updateNavigationData({
+          heading: {
+            magnetic: this.vesselState.heading?.magnetic || 0,
+            true: this.vesselState.heading?.true || 0,
+          },
+          wind: {
+            apparentSpeed: this.vesselState.wind?.apparentSpeed || 0,
+            apparentAngle: this.vesselState.wind?.apparentAngle || 0,
+            trueSpeed: this.vesselState.wind?.trueSpeed || 0,
+            trueAngle: this.vesselState.wind?.trueAngle || 0,
+          },
+          depth: this.vesselState.depth || 0,
+          speed: {
+            throughWater: this.vesselState.speed?.stw || 0,
+            overGround: this.vesselState.speed?.sog || 0,
+          },
+          position: {
+            latitude: this.vesselState.position?.latitude || 0,
+            longitude: this.vesselState.position?.longitude || 0,
+          },
+          autopilot: this.vesselState.autopilot,
+          timestamp: new Date(),
+        });
+      }
 
       // Check for alerts
       const alerts = this.nmea2000Parser.checkAlerts(this.vesselState);
@@ -432,6 +503,151 @@ export class SeaNode extends BaseNode {
         },
       };
     });
+  }
+
+  /**
+   * Setup cross-node collaboration
+   * Enables yacht to work with Weather, Maintenance, Restaurant, and other nodes
+   */
+  private setupCrossNodeCollaboration(): void {
+    // Store connected node IDs for easy access
+    const connectedNodes = {
+      weather: [] as string[],
+      maintenance: [] as string[],
+      restaurant: [] as string[],
+      finance: [] as string[],
+    };
+
+    // Discover and connect to available nodes
+    this.discoverNodes(connectedNodes);
+  }
+
+  /**
+   * Discover available ecosystem nodes
+   */
+  private discoverNodes(connectedNodes: any): void {
+    // Find weather nodes
+    const weatherNodes = BaseNode.findNodesByType('ada.weather');
+    weatherNodes.forEach(node => {
+      connectedNodes.weather.push(node.getIdentity().id);
+      this.connectToNode(node.getIdentity().id);
+    });
+
+    // Find maintenance nodes
+    const maintenanceNodes = BaseNode.findNodesByType('ada.maintenance');
+    maintenanceNodes.forEach(node => {
+      connectedNodes.maintenance.push(node.getIdentity().id);
+      this.connectToNode(node.getIdentity().id);
+    });
+
+    // Find restaurant nodes
+    const restaurantNodes = BaseNode.findNodesByType('ada.restaurant');
+    restaurantNodes.forEach(node => {
+      connectedNodes.restaurant.push(node.getIdentity().id);
+      this.connectToNode(node.getIdentity().id);
+    });
+
+    // Find finance nodes
+    const financeNodes = BaseNode.findNodesByType('ada.finance');
+    financeNodes.forEach(node => {
+      connectedNodes.finance.push(node.getIdentity().id);
+      this.connectToNode(node.getIdentity().id);
+    });
+  }
+
+  /**
+   * Request route safety check from Weather node
+   */
+  async requestRouteSafetyCheck(destination: {
+    latitude: number;
+    longitude: number;
+    name: string;
+  }): Promise<any> {
+    const weatherNodes = BaseNode.findNodesByType('ada.weather');
+    if (weatherNodes.length === 0) {
+      return { error: 'No weather node available' };
+    }
+
+    // Get current position (simulated for demo)
+    const currentPosition = {
+      latitude: 41.0082,
+      longitude: 28.9784,
+      name: this.vessel.name,
+    };
+
+    const result = await this.requestFromNode(
+      weatherNodes[0].getIdentity().id,
+      'check-route-safety',
+      {
+        origin: currentPosition,
+        destination,
+        departureTime: new Date(),
+      }
+    );
+
+    this.remember('data', { routeSafetyCheck: result }, ['weather', 'route-planning'], 8);
+    return result;
+  }
+
+  /**
+   * Request emergency maintenance
+   */
+  async requestEmergencyMaintenance(issue: {
+    category: string;
+    description: string;
+    severity: 'low' | 'medium' | 'high' | 'critical';
+  }): Promise<any> {
+    const maintenanceNodes = BaseNode.findNodesByType('ada.maintenance');
+    if (maintenanceNodes.length === 0) {
+      return { error: 'No maintenance node available' };
+    }
+
+    const result = await this.requestFromNode(
+      maintenanceNodes[0].getIdentity().id,
+      'emergency-repair',
+      {
+        requesterId: this.identity.id,
+        requesterName: this.vessel.name,
+        category: issue.category,
+        description: issue.description,
+        priority: issue.severity === 'critical' ? 'critical' : 'high',
+      }
+    );
+
+    this.remember('data', { maintenanceRequest: result }, ['maintenance', 'emergency'], 9);
+    return result;
+  }
+
+  /**
+   * Request meal service from Restaurant node
+   */
+  async requestMealService(request: {
+    guestCount: number;
+    mealType: 'breakfast' | 'lunch' | 'dinner' | 'snack';
+    cuisine?: string[];
+    dietaryRestrictions?: string[];
+  }): Promise<any> {
+    const restaurantNodes = BaseNode.findNodesByType('ada.restaurant');
+    if (restaurantNodes.length === 0) {
+      return { error: 'No restaurant node available' };
+    }
+
+    const result = await this.requestFromNode(
+      restaurantNodes[0].getIdentity().id,
+      'request-catering',
+      {
+        yachtId: this.identity.id,
+        yachtName: this.vessel.name,
+        guestCount: request.guestCount,
+        mealType: request.mealType,
+        cuisine: request.cuisine || ['Mediterranean'],
+        dietaryRestrictions: request.dietaryRestrictions || [],
+        deliveryTime: new Date(Date.now() + 2 * 60 * 60 * 1000), // 2 hours from now
+      }
+    );
+
+    this.remember('data', { mealRequest: result }, ['restaurant', 'catering'], 7);
+    return result;
   }
 
   /**
@@ -756,6 +972,94 @@ export class SeaNode extends BaseNode {
   }
 
   /**
+   * Setup Observer event handlers
+   */
+  private setupObserverHandlers(): void {
+    // State changes
+    this.observer.on('state:change', (change) => {
+      this.logEvent('Vessel state changed', { from: change.from, to: change.to });
+      this.emit('observer:state-change', change);
+    });
+
+    // State updates
+    this.observer.on('state:update', (state) => {
+      this.emit('observer:state-update', state);
+    });
+
+    // Navigation updates
+    this.observer.on('navigation:update', (data) => {
+      this.emit('observer:navigation-update', data);
+    });
+
+    // Anchor events
+    this.observer.on('anchor:watch:started', (watch) => {
+      this.logEvent('Anchor watch started', watch);
+      this.emit('observer:anchor-watch-started', watch);
+    });
+
+    this.observer.on('anchor:drag', (alert) => {
+      this.logEvent('⚠️ ANCHOR DRAG DETECTED', alert);
+      this.emit('alert', {
+        severity: 'critical',
+        source: 'anchor-watch',
+        message: alert.message,
+        data: alert,
+      });
+    });
+
+    this.observer.on('anchor:holding', (alert) => {
+      this.logEvent('Anchor holding again', alert);
+      this.emit('observer:anchor-holding', alert);
+    });
+
+    // Journey events
+    this.observer.on('journey:started', (journey) => {
+      this.logEvent('Journey started', journey);
+      this.emit('observer:journey-started', journey);
+    });
+
+    this.observer.on('journey:ended', (journey) => {
+      this.logEvent('Journey ended', journey);
+      this.emit('observer:journey-ended', journey);
+    });
+
+    // Log entries
+    this.observer.on('log:entry', (entry) => {
+      this.remember('data', entry, ['logbook', entry.type], 7);
+      this.emit('observer:log-entry', entry);
+    });
+
+    // Away mode notifications
+    this.observer.on('away:notification', async (notification) => {
+      this.logEvent('Away mode notification', notification);
+
+      // Send SMS/Email to vessel owner
+      await this.notificationService.sendUrgentNotification(
+        {
+          name: 'Vessel Owner',
+          email: 'owner@example.com', // Should be configured per vessel
+          phone: '+90-555-XXX-XXXX', // Should be configured per vessel
+        },
+        {
+          subject: `⚠️ ${notification.type} Alert - ${notification.vesselName}`,
+          body: notification.message,
+          priority: 'urgent',
+          timestamp: notification.timestamp,
+        }
+      );
+
+      this.emit('observer:away-notification', notification);
+    });
+  }
+
+  /**
+   * Get Ada Observer instance
+   */
+  getObserver(): AdaObserver {
+    return this.observer;
+  }
+
+  /**
    * Export yacht data
    */
   exportVesselData(): string {
@@ -766,6 +1070,9 @@ export class SeaNode extends BaseNode {
       vesselState: this.vesselState,
       crew: this.crewManagement.getAllCrew(),
       passengers: this.passengerService.getAllPassengers(),
+      observerState: this.observer.getVesselState(),
+      navigationData: this.observer.getPrimaryNavigationData(),
+      anchorWatch: this.observer.getAnchorWatch(),
     }, null, 2);
   }
 }
