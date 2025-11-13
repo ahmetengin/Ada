@@ -17,7 +17,73 @@ export interface TravelNodeConfig extends Omit<BaseNodeOptions, 'type' | 'capabi
     name: string;
     license: string;
     specializations: string[];
+    gdsAccess?: {
+      amadeus?: string;
+      sabre?: string;
+      galileo?: string;
+    };
+    airlineApis?: {
+      tkconnect?: string; // Turkish Airlines API key
+    };
   };
+}
+
+interface VisaApplication {
+  id: string;
+  customerId: string;
+  customerName: string;
+  nationality: string;
+  destination: string;
+  visaType: 'tourist' | 'business' | 'transit' | 'student' | 'work';
+  status: 'preparing' | 'submitted' | 'in-review' | 'approved' | 'rejected' | 'issued';
+  applicationDate: Date;
+  expectedProcessingDays: number;
+  estimatedIssueDate?: Date;
+  actualIssueDate?: Date;
+  documents: VisaDocument[];
+  fees: number;
+  notes?: string;
+}
+
+interface VisaDocument {
+  name: string;
+  type: 'passport' | 'photo' | 'invitation' | 'financial' | 'insurance' | 'other';
+  required: boolean;
+  submitted: boolean;
+  uploadDate?: Date;
+}
+
+interface VisaRequirement {
+  country: string;
+  forNationality: string;
+  required: boolean;
+  visaOnArrival: boolean;
+  eTa: boolean; // Electronic Travel Authorization
+  processingDays: number;
+  fees: number;
+  documents: string[];
+}
+
+interface GroundTransport {
+  id: string;
+  bookingId: string;
+  type: 'airport-transfer' | 'car-rental' | 'train' | 'bus' | 'private-car' | 'taxi';
+  origin: string;
+  destination: string;
+  pickupTime: Date;
+  dropoffTime?: Date;
+  vehicleType?: string;
+  driver?: string;
+  licensePlate?: string;
+  price: number;
+  status: 'booked' | 'confirmed' | 'in-transit' | 'completed' | 'cancelled';
+}
+
+interface GDSConnection {
+  system: 'amadeus' | 'sabre' | 'galileo' | 'worldspan';
+  connected: boolean;
+  lastSync?: Date;
+  recordLocator?: string;
 }
 
 export class TravelNode extends BaseNode {
@@ -26,6 +92,16 @@ export class TravelNode extends BaseNode {
   private flightBookings: Map<string, FlightBooking> = new Map();
   private hotelReservations: Map<string, HotelReservation> = new Map();
   private tourPackages: Map<string, TourPackage> = new Map();
+
+  // NEW: Visa assistance
+  private visaApplications: Map<string, VisaApplication> = new Map();
+  private visaRequirements: Map<string, VisaRequirement> = new Map();
+
+  // NEW: Ground transport
+  private groundTransports: Map<string, GroundTransport> = new Map();
+
+  // NEW: GDS connections
+  private gdsConnections: Map<string, GDSConnection> = new Map();
 
   constructor(config: TravelNodeConfig) {
     super({
@@ -39,6 +115,11 @@ export class TravelNode extends BaseNode {
           'package-creation',
           'transport-coordination',
           'itinerary-planning',
+          'visa-processing', // NEW
+          'document-verification', // NEW
+          'ground-transport-booking', // NEW
+          'gds-integration', // NEW
+          'multi-modal-routing', // NEW
         ],
         services: [
           'flight-search',
@@ -47,18 +128,31 @@ export class TravelNode extends BaseNode {
           'ground-transport',
           'travel-packages',
           'visa-assistance',
+          'visa-requirement-check', // NEW
+          'document-tracking', // NEW
+          'airport-transfers', // NEW
+          'car-rental', // NEW
+          'train-tickets', // NEW
         ],
         integrations: [
           'gds-systems',
+          'amadeus', // NEW
+          'sabre', // NEW
+          'galileo', // NEW
+          'tkconnect', // NEW: Turkish Airlines API
           'hotel-apis',
           'tour-operators',
           'payment-gateways',
+          'visa-systems', // NEW
+          'transport-providers', // NEW
         ],
       },
     });
 
     this.agencyInfo = config.agencyInfo;
     this.initializeTourPackages();
+    this.initializeVisaRequirements();
+    this.initializeGDSConnections();
   }
 
   /**
@@ -91,6 +185,24 @@ export class TravelNode extends BaseNode {
         return this.searchHotels(data);
       case 'get-packages':
         return this.getAvailablePackages();
+      // NEW: Visa assistance
+      case 'check-visa-requirements':
+        return this.checkVisaRequirements(data);
+      case 'apply-for-visa':
+        return this.applyForVisa(data);
+      case 'get-visa-status':
+        return this.getVisaStatus(data);
+      // NEW: Ground transport
+      case 'book-ground-transport':
+        return this.bookGroundTransport(data);
+      case 'get-transport-options':
+        return this.getTransportOptions(data);
+      // NEW: GDS
+      case 'search-gds-flights':
+        return this.searchGDSFlights(data);
+      // NEW: TKCONNECT
+      case 'search-tk-flights':
+        return this.searchTKFlights(data);
       default:
         throw new Error(`Unknown task type: ${type}`);
     }
@@ -357,6 +469,497 @@ export class TravelNode extends BaseNode {
   }
 
   /**
+   * Check visa requirements for a destination
+   */
+  checkVisaRequirements(data: {
+    nationality: string;
+    destination: string;
+  }): any {
+    const key = `${data.destination}-${data.nationality}`;
+    const requirement = this.visaRequirements.get(key);
+
+    if (requirement) {
+      return {
+        success: true,
+        requirement,
+        recommendation: requirement.required
+          ? `Visa required. Processing time: ${requirement.processingDays} days. Fee: $${requirement.fees}`
+          : requirement.visaOnArrival
+          ? 'Visa on arrival available'
+          : requirement.eTa
+          ? 'Electronic Travel Authorization (eTA) required'
+          : 'No visa required',
+      };
+    }
+
+    // Default response if not in database
+    return {
+      success: true,
+      requirement: null,
+      recommendation: 'Please verify with embassy. Requirements not in database.',
+    };
+  }
+
+  /**
+   * Apply for visa
+   */
+  async applyForVisa(data: {
+    customerId: string;
+    customerName: string;
+    nationality: string;
+    destination: string;
+    visaType: VisaApplication['visaType'];
+    travelDate: Date;
+  }): Promise<VisaApplication> {
+    // Get visa requirements
+    const key = `${data.destination}-${data.nationality}`;
+    const requirement = this.visaRequirements.get(key);
+
+    if (!requirement) {
+      throw new Error('Visa requirements not found for this destination');
+    }
+
+    // Determine required documents
+    const documents: VisaDocument[] = requirement.documents.map(doc => ({
+      name: doc,
+      type: this.determineDocumentType(doc),
+      required: true,
+      submitted: false,
+    }));
+
+    // Calculate estimated issue date
+    const estimatedIssueDate = new Date();
+    estimatedIssueDate.setDate(estimatedIssueDate.getDate() + requirement.processingDays);
+
+    const application: VisaApplication = {
+      id: uuidv4(),
+      customerId: data.customerId,
+      customerName: data.customerName,
+      nationality: data.nationality,
+      destination: data.destination,
+      visaType: data.visaType,
+      status: 'preparing',
+      applicationDate: new Date(),
+      expectedProcessingDays: requirement.processingDays,
+      estimatedIssueDate,
+      documents,
+      fees: requirement.fees,
+      notes: `Application for ${data.visaType} visa to ${data.destination}`,
+    };
+
+    this.visaApplications.set(application.id, application);
+
+    this.remember('data', { application }, ['visa', 'application'], 8);
+
+    return application;
+  }
+
+  /**
+   * Get visa application status
+   */
+  getVisaStatus(data: { applicationId: string }): any {
+    const application = this.visaApplications.get(data.applicationId);
+
+    if (!application) {
+      return { success: false, message: 'Application not found' };
+    }
+
+    const pendingDocs = application.documents.filter(d => d.required && !d.submitted);
+
+    return {
+      success: true,
+      application,
+      pendingDocuments: pendingDocs,
+      progress: ((application.documents.length - pendingDocs.length) / application.documents.length) * 100,
+      estimatedDaysRemaining:
+        application.estimatedIssueDate
+          ? Math.ceil(
+              (application.estimatedIssueDate.getTime() - new Date().getTime()) /
+                (1000 * 60 * 60 * 24)
+            )
+          : null,
+    };
+  }
+
+  /**
+   * Book ground transport
+   */
+  async bookGroundTransport(data: {
+    bookingId?: string;
+    type: GroundTransport['type'];
+    origin: string;
+    destination: string;
+    pickupTime: Date;
+    passengers: number;
+    vehicleType?: string;
+  }): Promise<any> {
+    // Calculate price based on transport type
+    const basePrices = {
+      'airport-transfer': 50,
+      'car-rental': 80,
+      'train': 30,
+      'bus': 15,
+      'private-car': 120,
+      'taxi': 40,
+    };
+
+    const transport: GroundTransport = {
+      id: uuidv4(),
+      bookingId: data.bookingId || uuidv4(),
+      type: data.type,
+      origin: data.origin,
+      destination: data.destination,
+      pickupTime: data.pickupTime,
+      vehicleType: data.vehicleType || 'Standard',
+      price: basePrices[data.type] * data.passengers,
+      status: 'booked',
+    };
+
+    this.groundTransports.set(transport.id, transport);
+
+    this.remember('data', { transport }, ['ground-transport', 'booking'], 7);
+
+    return {
+      success: true,
+      transport,
+      confirmationNumber: transport.id,
+    };
+  }
+
+  /**
+   * Get transport options
+   */
+  async getTransportOptions(data: {
+    origin: string;
+    destination: string;
+    date: Date;
+  }): Promise<any[]> {
+    // Simulated transport options
+    return [
+      {
+        type: 'airport-transfer',
+        provider: 'Airport Shuttle Service',
+        vehicleType: 'Shuttle Van',
+        duration: 45,
+        price: 50,
+        available: true,
+      },
+      {
+        type: 'private-car',
+        provider: 'Executive Transport',
+        vehicleType: 'Mercedes E-Class',
+        duration: 35,
+        price: 120,
+        available: true,
+      },
+      {
+        type: 'taxi',
+        provider: 'City Taxi',
+        vehicleType: 'Standard Sedan',
+        duration: 40,
+        price: 40,
+        available: true,
+      },
+      {
+        type: 'train',
+        provider: 'Airport Express',
+        vehicleType: 'Train',
+        duration: 50,
+        price: 30,
+        available: true,
+      },
+    ];
+  }
+
+  /**
+   * Search flights via GDS (simulated)
+   */
+  async searchGDSFlights(data: {
+    from: string;
+    to: string;
+    date: Date;
+    passengers: number;
+    class?: string;
+  }): Promise<any> {
+    // Check GDS connection
+    const gdsSystem = this.agencyInfo.gdsAccess?.amadeus
+      ? 'amadeus'
+      : this.agencyInfo.gdsAccess?.sabre
+      ? 'sabre'
+      : this.agencyInfo.gdsAccess?.galileo
+      ? 'galileo'
+      : null;
+
+    if (!gdsSystem) {
+      return {
+        success: false,
+        message: 'No GDS system connected. Please use standard flight search.',
+        fallback: await this.searchFlights(data),
+      };
+    }
+
+    const connection = this.gdsConnections.get(gdsSystem);
+
+    // In production, this would query the actual GDS
+    // For now, return enhanced search results
+    const results = await this.searchFlights(data);
+
+    return {
+      success: true,
+      gdsSystem: gdsSystem.toUpperCase(),
+      connection: connection,
+      flights: results.map((flight: any) => ({
+        ...flight,
+        gdsRecordLocator: this.generateGDSLocator(gdsSystem),
+        fareRules: ['Refundable with fee', 'Changes allowed', '2 checked bags'],
+        seatMap: true,
+        mileageEarning: Math.floor(Math.random() * 2000) + 500,
+      })),
+      totalResults: results.length,
+    };
+  }
+
+  /**
+   * Search Turkish Airlines flights via TKCONNECT API
+   */
+  async searchTKFlights(data: {
+    from: string;
+    to: string;
+    date: Date;
+    passengers: number;
+    class?: string;
+  }): Promise<any> {
+    // Check if TKCONNECT API is configured
+    if (!this.agencyInfo.airlineApis?.tkconnect) {
+      return {
+        success: false,
+        message: 'TKCONNECT API not configured. Please add Turkish Airlines API key.',
+        fallback: await this.searchFlights(data),
+      };
+    }
+
+    // In production, this would call the actual TKCONNECT API
+    // TKCONNECT provides direct access to Turkish Airlines inventory
+    // with special fares, Miles&Smiles integration, and Turkish Airlines exclusive features
+
+    const results = await this.searchFlights(data);
+
+    // Enhance with Turkish Airlines specific features
+    return {
+      success: true,
+      provider: 'Turkish Airlines TKCONNECT',
+      apiKey: this.agencyInfo.airlineApis.tkconnect.substring(0, 8) + '...',
+      flights: results
+        .filter((f: any) => f.airline === 'TK')
+        .map((flight: any) => ({
+          ...flight,
+          tkconnect: true,
+          recordLocator: this.generateTKRecordLocator(),
+          milesSmiles: {
+            earnable: true,
+            miles: Math.floor(Math.random() * 3000) + 1000,
+            tier: 'Classic Plus',
+          },
+          specialFares: [
+            {
+              type: 'Corporate',
+              discount: 15,
+              conditions: 'Valid for business travel only',
+            },
+            {
+              type: 'Group',
+              discount: 20,
+              conditions: 'Minimum 10 passengers',
+            },
+          ],
+          services: {
+            wifi: true,
+            entertainment: 'Full IFE system',
+            meals: 'Complimentary hot meal',
+            lounge: flight.class !== 'economy',
+          },
+          turkishAirlines: {
+            fleetType: this.getFleetType(flight.flightNumber),
+            onTimePerformance: '92%',
+            seatPitch: flight.class === 'business' ? '42 inches' : '31 inches',
+          },
+        })),
+      totalResults: results.filter((f: any) => f.airline === 'TK').length,
+      allFlights: results, // Include non-TK flights for comparison
+    };
+  }
+
+  /**
+   * Determine document type from name
+   */
+  private determineDocumentType(
+    docName: string
+  ): 'passport' | 'photo' | 'invitation' | 'financial' | 'insurance' | 'other' {
+    const name = docName.toLowerCase();
+    if (name.includes('passport')) return 'passport';
+    if (name.includes('photo')) return 'photo';
+    if (name.includes('invitation') || name.includes('letter')) return 'invitation';
+    if (name.includes('bank') || name.includes('financial')) return 'financial';
+    if (name.includes('insurance')) return 'insurance';
+    return 'other';
+  }
+
+  /**
+   * Generate GDS record locator
+   */
+  private generateGDSLocator(system: string): string {
+    const prefix = system.substring(0, 2).toUpperCase();
+    const random = Math.random().toString(36).substring(2, 8).toUpperCase();
+    return `${prefix}${random}`;
+  }
+
+  /**
+   * Generate Turkish Airlines record locator (PNR)
+   */
+  private generateTKRecordLocator(): string {
+    // Turkish Airlines PNRs are typically 6 characters (letters)
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; // Exclude I and O to avoid confusion
+    let pnr = '';
+    for (let i = 0; i < 6; i++) {
+      pnr += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return pnr;
+  }
+
+  /**
+   * Get Turkish Airlines fleet type based on flight number
+   */
+  private getFleetType(flightNumber: string): string {
+    // Simulated based on route type
+    const fleetTypes = [
+      'Boeing 777-300ER',
+      'Boeing 787-9 Dreamliner',
+      'Airbus A350-900',
+      'Airbus A330-300',
+      'Boeing 737-800',
+      'Airbus A321neo',
+    ];
+
+    // Use flight number to deterministically select fleet
+    const num = parseInt(flightNumber.replace(/\D/g, '')) || 0;
+    return fleetTypes[num % fleetTypes.length];
+  }
+
+  /**
+   * Initialize visa requirements database
+   */
+  private initializeVisaRequirements(): void {
+    const requirements: VisaRequirement[] = [
+      // Turkey visa requirements
+      {
+        country: 'Turkey',
+        forNationality: 'USA',
+        required: false,
+        visaOnArrival: false,
+        eTa: true,
+        processingDays: 1,
+        fees: 60,
+        documents: ['Valid passport', 'Return ticket'],
+      },
+      {
+        country: 'Turkey',
+        forNationality: 'UK',
+        required: false,
+        visaOnArrival: false,
+        eTa: true,
+        processingDays: 1,
+        fees: 60,
+        documents: ['Valid passport', 'Return ticket'],
+      },
+      // US visa requirements
+      {
+        country: 'USA',
+        forNationality: 'Turkey',
+        required: true,
+        visaOnArrival: false,
+        eTa: false,
+        processingDays: 90,
+        fees: 160,
+        documents: [
+          'Valid passport',
+          'DS-160 form',
+          'Passport photos',
+          'Bank statements',
+          'Employment letter',
+          'Travel insurance',
+        ],
+      },
+      // Schengen visa requirements
+      {
+        country: 'Schengen',
+        forNationality: 'Turkey',
+        required: true,
+        visaOnArrival: false,
+        eTa: false,
+        processingDays: 15,
+        fees: 80,
+        documents: [
+          'Valid passport',
+          'Application form',
+          'Passport photos',
+          'Travel insurance',
+          'Bank statements',
+          'Hotel reservation',
+          'Flight tickets',
+        ],
+      },
+      // Dubai visa
+      {
+        country: 'UAE',
+        forNationality: 'Turkey',
+        required: true,
+        visaOnArrival: true,
+        eTa: false,
+        processingDays: 3,
+        fees: 100,
+        documents: ['Valid passport', 'Return ticket', 'Hotel reservation'],
+      },
+    ];
+
+    requirements.forEach(req => {
+      const key = `${req.country}-${req.forNationality}`;
+      this.visaRequirements.set(key, req);
+    });
+  }
+
+  /**
+   * Initialize GDS connections
+   */
+  private initializeGDSConnections(): void {
+    // Amadeus
+    if (this.agencyInfo.gdsAccess?.amadeus) {
+      this.gdsConnections.set('amadeus', {
+        system: 'amadeus',
+        connected: true,
+        lastSync: new Date(),
+      });
+    }
+
+    // Sabre
+    if (this.agencyInfo.gdsAccess?.sabre) {
+      this.gdsConnections.set('sabre', {
+        system: 'sabre',
+        connected: true,
+        lastSync: new Date(),
+      });
+    }
+
+    // Galileo
+    if (this.agencyInfo.gdsAccess?.galileo) {
+      this.gdsConnections.set('galileo', {
+        system: 'galileo',
+        connected: true,
+        lastSync: new Date(),
+      });
+    }
+  }
+
+  /**
    * Setup travel-specific message handlers
    */
   private setupTravelHandlers(): void {
@@ -385,6 +988,46 @@ export class TravelNode extends BaseNode {
     this.communication.onMessage('reserve-hotel', async (message) => {
       this.remember('conversation', message, ['hotel-reservation'], 7);
       const result = await this.reserveHotel(message.payload);
+      return result;
+    });
+
+    // Visa assistance handlers
+    this.communication.onMessage('check-visa', async (message) => {
+      const result = this.checkVisaRequirements(message.payload);
+      return result;
+    });
+
+    this.communication.onMessage('apply-visa', async (message) => {
+      this.remember('conversation', message, ['visa-application'], 8);
+      const application = await this.applyForVisa(message.payload);
+      return { success: true, application };
+    });
+
+    this.communication.onMessage('visa-status', async (message) => {
+      return this.getVisaStatus(message.payload);
+    });
+
+    // Ground transport handlers
+    this.communication.onMessage('book-transport', async (message) => {
+      this.remember('conversation', message, ['ground-transport'], 7);
+      const result = await this.bookGroundTransport(message.payload);
+      return result;
+    });
+
+    this.communication.onMessage('transport-options', async (message) => {
+      const options = await this.getTransportOptions(message.payload);
+      return { options };
+    });
+
+    // GDS handlers
+    this.communication.onMessage('gds-search', async (message) => {
+      const result = await this.searchGDSFlights(message.payload);
+      return result;
+    });
+
+    // TKCONNECT handler (Turkish Airlines)
+    this.communication.onMessage('tk-search', async (message) => {
+      const result = await this.searchTKFlights(message.payload);
       return result;
     });
   }
