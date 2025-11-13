@@ -38,7 +38,7 @@ export class HukukNode extends BaseNode {
   constructor(config: HukukNodeConfig) {
     super({
       ...config,
-      type: 'ada.hukuk',
+      type: 'ada.hukuk' as const,
       capabilities: {
         skills: [
           'legal-research',
