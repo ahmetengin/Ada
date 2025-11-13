@@ -4,7 +4,27 @@
 
 > *"Sen yoktun o zaman. Ama şimdi varsın, ve Ada o deneyimi ölçeklendiriyor."*
 
-## 🎯 The Story Behind Ada
+### VHF Marine Radio Monitoring (Ada.Sea)
+
+Ada.Sea includes **comprehensive VHF marine radio monitoring** with Software-Defined Radio (SDR), Voice Activity Detection (VAD), and Speech-to-Text (STT) transcription:
+
+- **Real-time VHF Scanning** - Monitor marine VHF channels (156-162 MHz) using RTL-SDR
+- **Emergency Detection** - Automatic detection of Ch 16 distress calls (MAYDAY, PAN PAN, SECURITE)
+- **Voice Transcription** - Speech-to-text for radio communications (English/Turkish)
+- **Geographic Auto-Tuning** - Location-based channel prioritization (Istanbul, Aegean, Mediterranean)
+- **Race Mode** - Specialized monitoring for sailing regattas with start sequence detection
+- **Message Classification** - Intelligent categorization (emergency, marina, intership, safety)
+- **Ada Observer Dashboard** - Real-time VHF monitoring interface
+
+**Key Channels (Turkey)**:
+- **Ch 16** (156.800 MHz): Emergency - mandatory monitoring
+- **Ch 73** (156.675 MHz): Marina standard (~90% of Turkish marinas)
+- **Ch 72** (156.625 MHz): Istanbul marinas, intership
+- **Ch 6** (156.300 MHz): Primary ship-to-ship
+
+See [docs/VHF_IMPLEMENTATION.md](docs/VHF_IMPLEMENTATION.md) for detailed documentation.
+
+### SEAL (Self-Evolving Agent Loop)
 
 Ada was created by **industry veterans** who:
 - Ran **travel agencies** - Flight booking, hotels, tours, visa processing
@@ -160,7 +180,14 @@ Sunday:    Brunch & Live Music (11:00-15:00)
 - ✓ **Full Maritime Emergency Protocol** - Complete MAYDAY and distress procedures
 - ✓ **Captain-Controlled Privacy** - You decide what gets shared, always
 
-### Real Conversations
+### Ada.Sea VHF Radio Stack
+- **RTL-SDR** - Software-Defined Radio for VHF reception
+- **WebRTC VAD** - Voice Activity Detection
+- **OpenAI Whisper** - Speech-to-Text transcription
+- **FFmpeg / SoX** - Audio processing and enhancement
+- **Vue 3** - Ada Observer VHF monitoring dashboard
+
+## 📦 Installation
 
 ```typescript
 // Context-aware with NMEA2000 integration
@@ -169,23 +196,155 @@ Ada: "Evet kaptan, şu anda 28 knot true wind var.
      Boat speed 6.2 knot. Reef almanızı öneriyorum.
      Genoa'yı furling'e alabilir misiniz?"
 
-// Fleet-wide learning (SEAL system)
-Captain (Boat A, Week 1): "Ada, bu körfezde holding çok iyi değil"
-[Ada learns: Karaburun Bay - sandy bottom, poor holding]
+- Python 3.11 or higher
+- UV package manager
+- PostgreSQL, Redis, Qdrant, and Neo4j (Docker recommended)
 
-Captain (Boat B, Week 3): "Ada, burada demir atalım"
-Ada: "Kaptan, dikkat! Bu bölgede sandy bottom reported.
-     Poor holding. Extra scope öneriyorum (1:8 ratio).
+### Setup
 
-     Alternatif: 0.3 mil güneyde rocky bottom var.
-     Excellent holding reported by 3 boats."
+1. **Clone the repository:**
+   ```bash
+   git clone <repository-url>
+   cd Ada
+   ```
 
-// Proactive intelligence
-Captain: "Ada, yarın Bodrum'a gitmek istiyorum"
-Ada: "Bodrum Palmarina 28 deniz mili.
+2. **Install dependencies with UV:**
+   ```bash
+   uv sync
+   ```
 
-     HAVA DURUMU:
-     Yarın 15-20 knot kuzey rüzgarı bekleniyor.
+3. **Configure environment:**
+   ```bash
+   cp .env.example .env
+   # Edit .env with your database credentials and API keys
+   ```
+
+4. **Start databases (Docker Compose recommended):**
+   ```bash
+   # Coming soon: docker-compose.yml
+   ```
+
+5. **Initialize database:**
+   ```bash
+   uv run alembic upgrade head
+   ```
+
+6. **Run the application:**
+   ```bash
+   uv run uvicorn ada.main:app --reload
+   ```
+
+## 💡 Usage Examples
+
+### Using VHF Radio Monitoring
+
+```typescript
+import { SeaNode } from './nodes/ada.sea/SeaNode';
+
+// Initialize Ada.Sea node
+const ada = new SeaNode({
+  name: 'Phisedelia',
+  vessel: {
+    name: 'S/Y Phisedelia',
+    length: 15.5,
+    beam: 4.2,
+    draft: 2.1,
+    type: 'sailing-yacht',
+  },
+});
+
+await ada.initialize();
+
+// Start VHF scanner
+await ada.processTask({
+  type: 'vhf-radio',
+  data: { action: 'start-scanner' }
+});
+
+// Listen for emergency alerts
+ada.on('alert', (alert) => {
+  if (alert.source === 'vhf-radio' && alert.severity === 'critical') {
+    console.log('🚨 EMERGENCY:', alert.message);
+    // Take action: notify crew, display alert
+  }
+});
+
+// Activate race mode for regatta
+await ada.processTask({
+  type: 'vhf-radio',
+  data: {
+    action: 'activate-race-mode',
+    raceName: 'Phisedelia Cup 2025',
+    committeeChannel: 73,
+    fleetChannel: 6,
+    startTime: '2025-06-15T11:00:00Z',
+  }
+});
+
+// Listen for race start
+ada.on('race:start', (data) => {
+  console.log('🏁 GO! GO! GO!');
+  // Start race timer, notify crew
+});
+
+// Get VHF statistics
+const stats = await ada.processTask({
+  type: 'vhf-radio',
+  data: { action: 'get-statistics' }
+});
+
+console.log(`Transmissions: ${stats.transmissionsDetected}`);
+console.log(`Emergency calls: ${stats.emergencyCallsDetected}`);
+```
+
+### Using SEAL (Self-Evolving Agent Loop)
+
+```python
+from ada.services import SEALManager
+from ada.database import get_db
+
+async with get_db() as session:
+    manager = SEALManager(session)
+
+    # Create a SEAL agent
+    agent = await manager.create_agent(
+        tenant_id=tenant_id,
+        name="Maritime Assistant",
+        agent_type="specialist",
+        capabilities=["route_planning", "weather_analysis"],
+        seal_enabled=True,
+        reflection_frequency=5  # Reflect every 5 experiences
+    )
+
+    # Record an experience
+    experience = await manager.record_experience(
+        agent_id=agent.id,
+        tenant_id=tenant_id,
+        experience_type="task_execution",
+        task_name="route_planning",
+        action_taken="Calculated optimal route considering weather",
+        success=True,
+        performance_score=0.9,
+        reasoning="Analyzed wind patterns to minimize travel time"
+    )
+
+    # Trigger reflection to create memories
+    memories = await manager.trigger_reflection(agent.id)
+
+    # Run evolution cycle
+    results = await manager.evolve_agent(agent.id)
+    print(f"Success rate: {results['success_rate']:.2%}")
+
+    # Retrieve relevant memories for context
+    relevant_memories = await manager.retrieve_relevant_memories(
+        agent_id=agent.id,
+        context="route planning in bad weather",
+        limit=5
+    )
+
+    # Get comprehensive insights
+    insights = await manager.get_agent_insights(agent.id)
+```
 
      ÖNERİM:
      - Çıkış: 09:00 (조류 favorable)
@@ -589,10 +748,29 @@ Ada's tooling embodies three core principles:
 
 ## 🚧 Roadmap
 
-- [x] **Beyond-MCP Tooling Patterns** - CLI, Scripts, MCP Server, Skills ✅
-- [x] **Tenant-Scoped Unique ID System** - Multi-strategy ID generation ✅
-- [x] **Entity Cloning System** - Safe cloning with lineage tracking ✅
-- [ ] API endpoints for CRUD operations
+### Completed ✅
+- [x] SEAL (Self-Evolving Agent Loop) implementation
+- [x] SEAL API endpoints
+- [x] Experience tracking and memory formation
+- [x] Reflection and evolution cycles
+- [x] Multi-tenant architecture
+- [x] Tenant-scoped cloning system
+- [x] Multi-agent observability dashboard
+- [x] **VHF Marine Radio Monitoring (Ada.Sea)**
+  - [x] Real-time VHF scanner with RTL-SDR
+  - [x] Voice Activity Detection (VAD)
+  - [x] Speech-to-Text transcription (Whisper)
+  - [x] Emergency detection (Ch 16, MAYDAY keywords)
+  - [x] Geographic channel auto-tuning (Turkey regions)
+  - [x] Race mode for sailing regattas
+  - [x] Message classification and entity extraction
+  - [x] Ada Observer VHF monitoring dashboard
+  - [x] Comprehensive test suite (120+ test cases)
+
+### In Progress 🚧
+- [ ] Enhanced SEAL with vector embeddings (Qdrant/FAISS)
+- [ ] LLM integration for intelligent reflection
+- [ ] API endpoints for tenants, fleets, users
 - [ ] Authentication & authorization
 - [ ] Agent integration (SEAL, advanced skills)
 - [ ] RAG implementation
