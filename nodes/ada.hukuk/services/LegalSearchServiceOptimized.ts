@@ -61,7 +61,7 @@ export class LegalSearchServiceOptimized {
 
     if (this.enableOptimization) {
       // Use MCP tool executor for optimized search
-      results = await this.searchViaM CP(query);
+      results = await this.searchViaMCP(query);
     } else {
       // Fallback to simulation
       results = await this.simulateSearch(query);

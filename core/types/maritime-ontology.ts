@@ -45,7 +45,8 @@ export type RelationshipType =
   | 'part_of' // A is part of B
   | 'leads_to' // A leads to B
   | 'conflicts_with' // A conflicts with B
-  | 'enhances' // A enhances B;
+  | 'enhances' // A enhances B
+  | 'affects'; // A affects B
 
 export interface ConceptRule {
   condition: string; // Logical expression

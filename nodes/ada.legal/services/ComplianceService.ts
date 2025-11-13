@@ -288,7 +288,7 @@ export class ComplianceService {
 
     // 4. DPIA for high-risk processing (GDPR Article 35)
     const isHighRisk =
-      hasSensitiveData ||
+      hasSpecialCategory ||
       activity.dataSubjects.reduce((sum, ds) => sum + ds.count, 0) > 10000 ||
       activity.crossBorderTransfer;
 

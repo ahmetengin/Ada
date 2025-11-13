@@ -475,6 +475,7 @@ export class SkillTree extends EventEmitter {
       experience: 0,
       maxExperience: 100,
       prerequisites: [],
+      subskills: [],
       unlocked: true,
       metadata: {
         timesUsed: 0,
@@ -529,6 +530,7 @@ export class SkillTree extends EventEmitter {
       experience: 0,
       maxExperience: 100,
       prerequisites: [],
+      subskills: [],
       unlocked: true,
       metadata: {
         timesUsed: 0,
@@ -583,6 +585,7 @@ export class SkillTree extends EventEmitter {
       experience: 0,
       maxExperience: 100,
       prerequisites: [],
+      subskills: [],
       unlocked: true,
       metadata: {
         timesUsed: 0,
@@ -620,6 +623,7 @@ export class SkillTree extends EventEmitter {
       experience: 0,
       maxExperience: 100,
       prerequisites: [],
+      subskills: [],
       unlocked: true,
       metadata: {
         timesUsed: 0,

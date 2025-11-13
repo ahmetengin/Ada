@@ -12,6 +12,7 @@ export type NodeType =
   | 'ada.maintenance'
   | 'ada.weather'
   | 'ada.legal'
+  | 'ada.hukuk'
   | 'ada.restaurant'
   | 'ada.customer';
 
