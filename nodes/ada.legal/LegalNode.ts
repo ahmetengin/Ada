@@ -6,6 +6,10 @@
 
 import { BaseNode, BaseNodeOptions } from '../../core/BaseNode.js';
 import { v4 as uuidv4 } from 'uuid';
+import { MaritimeLawService } from './services/MaritimeLawService.js';
+import { ComplianceService } from './services/ComplianceService.js';
+import { InsuranceService } from './services/InsuranceService.js';
+import { InternationalContractService } from './services/InternationalContractService.js';
 
 export interface LegalNodeConfig extends Omit<BaseNodeOptions, 'type' | 'capabilities'> {
   firmInfo: {
@@ -88,6 +92,12 @@ export class LegalNode extends BaseNode {
   private learnedClauses: Map<string, ContractTerm> = new Map();
   private precedents: Map<string, any> = new Map();
 
+  // Professional services
+  private maritimeLawService: MaritimeLawService;
+  private complianceService: ComplianceService;
+  private insuranceService: InsuranceService;
+  private contractService: InternationalContractService;
+
   constructor(config: LegalNodeConfig) {
     super({
       ...config,
@@ -106,6 +116,10 @@ export class LegalNode extends BaseNode {
           'regulatory-monitoring',
           'ai-learning', // AI learns from contracts
           'pattern-recognition', // Recognizes risky clauses
+          'imo-regulations', // IMO, SOLAS, MARPOL
+          'kvkk-gdpr-compliance', // KVKK/GDPR
+          'maritime-insurance', // P&I, H&M
+          'international-contracts', // Marina contracts, charter parties
         ],
         services: [
           'contract-management',
@@ -114,12 +128,16 @@ export class LegalNode extends BaseNode {
           'document-preparation',
           'regulatory-updates',
           'risk-assessment',
+          'vessel-compliance',
+          'insurance-review',
+          'contract-analysis',
         ],
         integrations: [
           'ada.marina',
           'ada.sea',
           'ada.finance',
           'ada.congress',
+          'ada.hukuk', // Turkish legal consultation
           'e-signature-apis',
           'legal-databases',
           'government-apis',
@@ -128,6 +146,13 @@ export class LegalNode extends BaseNode {
     });
 
     this.firmInfo = config.firmInfo;
+
+    // Initialize professional services
+    this.maritimeLawService = new MaritimeLawService();
+    this.complianceService = new ComplianceService();
+    this.insuranceService = new InsuranceService();
+    this.contractService = new InternationalContractService();
+
     this.initializeLearnedKnowledge();
   }
 
@@ -157,6 +182,27 @@ export class LegalNode extends BaseNode {
         return this.provideLegalAdvice(data);
       case 'sign-contract':
         return this.signContract(data);
+      // New service-backed tasks
+      case 'check-vessel-compliance':
+        return this.maritimeLawService.checkVesselCompliance(data.vessel);
+      case 'check-kvkk-compliance':
+        return this.complianceService.checkKVKKCompliance(data.activity);
+      case 'check-gdpr-compliance':
+        return this.complianceService.checkGDPRCompliance(data.activity);
+      case 'process-data-subject-request':
+        return this.complianceService.processDataSubjectRequest(data.request);
+      case 'handle-data-breach':
+        return this.complianceService.handleDataBreach(data.incident);
+      case 'check-insurance-coverage':
+        return this.insuranceService.checkCoverageAdequacy(data.vessel, data.policies);
+      case 'process-insurance-claim':
+        return this.insuranceService.processClaim(data.claim);
+      case 'analyze-marina-contract':
+        return this.contractService.analyzeMarinaContract(data.contractText);
+      case 'identify-contract-risks':
+        return this.contractService.identifyHighRiskClauses(data.contractText);
+      case 'check-insurance-compliance':
+        return this.contractService.checkInsuranceCompliance(data.contract, data.insurance);
       default:
         throw new Error(`Unknown task type: ${type}`);
     }
@@ -329,15 +375,18 @@ export class LegalNode extends BaseNode {
 
     // AI-powered risk detection
     if (data.contractText) {
-      // Check for risky patterns (AI learned these from past issues)
+      // Use InternationalContractService for advanced analysis
+      const highRiskClauses = this.contractService.identifyHighRiskClauses(data.contractText);
+
+      highRiskClauses.forEach(riskClause => {
+        risks.push(riskClause.risk);
+        suggestions.push(riskClause.recommendation);
+      });
+
+      // Legacy checks (kept for compatibility)
       if (data.contractText.toLowerCase().includes('unlimited liability')) {
         risks.push('Unlimited liability clause detected - HIGH RISK');
         suggestions.push('Consider adding liability cap');
-      }
-
-      if (data.contractText.toLowerCase().includes('automatic renewal')) {
-        risks.push('Automatic renewal without notice period');
-        suggestions.push('Add 30-day cancellation notice requirement');
       }
 
       if (!data.contractText.toLowerCase().includes('force majeure')) {
