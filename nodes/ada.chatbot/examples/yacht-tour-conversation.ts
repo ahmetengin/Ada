@@ -10,7 +10,6 @@ import { ChatbotNode } from '../ChatbotNode.js';
 async function yachtTourConversationExample() {
   // Initialize chatbot
   const chatbot = new ChatbotNode({
-    id: 'chatbot-1',
     name: 'Ada Chatbot',
     llmProvider: 'anthropic',
     modelName: 'claude-3-opus',

@@ -573,6 +573,11 @@ Respond in JSON format:
     // All info collected, orchestrate nodes
     session.state = 'confirming';
 
+    // Type guards - at this point we know these are defined
+    if (!ctx.travelDetails || !ctx.groupDetails) {
+      throw new Error('Missing required context after validation');
+    }
+
     // 1. Call ada.legal for visa check
     const visaCheck = await this.callNode('ada.legal', 'check-visa-requirements', {
       nationality: 'Turkey', // Assume Turkish nationality
@@ -584,7 +589,7 @@ Respond in JSON format:
       origin: ctx.travelDetails.origin,
       destination: ctx.travelDetails.destination,
       duration: ctx.travelDetails.duration,
-      passengers: ctx.groupDetails.adults + (ctx.groupDetails.children || 0),
+      passengers: (ctx.groupDetails.adults || 0) + (ctx.groupDetails.children || 0),
     });
 
     // 3. Call ada.weather for forecast
@@ -601,7 +606,7 @@ Respond in JSON format:
     // 5. Call ada.finance for cost estimate
     const costEstimate = await this.callNode('ada.finance', 'estimate-tour-cost', {
       duration: ctx.travelDetails.duration,
-      passengers: ctx.groupDetails.adults + (ctx.groupDetails.children || 0),
+      passengers: (ctx.groupDetails.adults || 0) + (ctx.groupDetails.children || 0),
       marinas: marinas.results,
       distance: routePlan.totalDistance,
     });
@@ -854,7 +859,7 @@ Bu paketi onaylarsanız rezervasyonunuzu hemen yapabilirim. Devam edelim mi?
     sessionId: string,
     userId?: string,
     language?: string,
-    channel?: string
+    channel?: 'web' | 'mobile' | 'voice' | 'sms'
   ): ConversationSession {
     return {
       id: sessionId,

@@ -5,7 +5,7 @@
  * Stores complete vessel profiles with all relationships
  */
 
-import neo4j, { Driver, Session } from 'neo4j-driver';
+import neo4j, { Driver, Session, Record } from 'neo4j-driver';
 import { VesselInstance, VesselOnboardingTemplate } from '../templates/VesselOnboardingTemplate.js';
 import { MMSI } from '../types/AISTypes.js';
 
@@ -411,7 +411,7 @@ export class VesselInstanceRepository {
         params
       );
 
-      return result.records.map(record => {
+      return result.records.map((record: Record) => {
         const vessel = record.get('v').properties;
         const owner = record.get('o')?.properties;
         const homePort = record.get('hp')?.properties;
