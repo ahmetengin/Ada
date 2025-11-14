@@ -1120,16 +1120,7 @@ export class ExperienceLearningPipeline extends EventEmitter {
   /**
    * Get combined statistics (SEAL + TabPFN)
    */
-  getCombinedStatistics(): {
-    seal: ReturnType<typeof this.getSEALStatistics>;
-    tabpfn: ReturnType<typeof this.getTabPFNStatistics>;
-    experiences: ReturnType<typeof this.getStatistics>;
-    processing_strategy: {
-      tabpfn_count: number;
-      hybrid_count: number;
-      seal_count: number;
-    };
-  } {
+  getCombinedStatistics() {
     // Count experiences by processing strategy
     const allExperiences = Array.from(this.experiences.values());
     let tabpfnCount = 0;
