@@ -178,6 +178,7 @@ async function main() {
         email: 'michael.chen@email.com',
         customFields: {
           ticketNumber: '1762384950123', // 13-digit e-ticket number
+          passengerNumber: '1', // Passenger number in PNR (1-6)
           pnr: 'ABC123',
           confirmationCode: 'ABC123',
           frequent_flyer: 'TK1234567',
@@ -229,8 +230,10 @@ async function main() {
       },
       metadata: {
         flightNumber: 'TK1234',
-        ticketNumber: '1762384950123',
+        ticketNumber: '1762384950123-1', // E-ticket with passenger suffix
         pnr: 'ABC123',
+        passengerNumber: '1',
+        totalPassengers: 2, // 2 passengers in this PNR
         departure: 'IST',
         arrival: 'JFK',
         departureTime: '2025-07-15T10:30:00Z',
@@ -248,11 +251,107 @@ async function main() {
 
   console.log('✅ Boarding pass created (Business Class):');
   console.log(`   Pass ID: ${boardingPass.passId}`);
-  console.log(`   E-Ticket: ${boardingPass.metadata?.ticketNumber}`);
+  console.log(`   E-Ticket: ${boardingPass.metadata?.ticketNumber} (Passenger ${boardingPass.metadata?.passengerNumber}/${boardingPass.metadata?.totalPassengers})`);
   console.log(`   Flight: ${boardingPass.metadata?.flightNumber} - ${boardingPass.metadata?.carrier}`);
   console.log(`   Route: ${boardingPass.metadata?.departure} → ${boardingPass.metadata?.arrival}`);
   console.log(`   Class: Business, Seat: ${boardingPass.metadata?.seat} (Window), Gate: ${boardingPass.metadata?.gate}`);
   console.log(`   PNR: ${boardingPass.metadata?.pnr}`);
+  console.log();
+
+  // ========================================================================
+  // EXAMPLE 2A-2: SECOND PASSENGER ON SAME PNR
+  // ========================================================================
+
+  console.log('✈️  EXAMPLE 2A-2: Second Passenger (Same PNR)\n');
+
+  const boardingPass2 = await passKit.processTask({
+    type: 'create-pass',
+    data: {
+      domain: 'ada.travel' as PassDomain,
+      passType: 'BOARDING_PASS' as PassType,
+      holder: {
+        name: 'Jennifer Chen', // Traveling with Michael Chen
+        email: 'jennifer.chen@email.com',
+        customFields: {
+          ticketNumber: '1762384950123', // Same base number
+          passengerNumber: '2', // Different passenger number
+          pnr: 'ABC123', // Same PNR
+          confirmationCode: 'ABC123',
+          frequent_flyer: 'TK9876543',
+          tier: 'Silver',
+        },
+      },
+      validity: {
+        validFrom: new Date('2025-07-15T06:00:00Z'),
+        validTo: new Date('2025-07-15T14:00:00Z'),
+        singleUse: false,
+        maxScans: 3,
+      },
+      zones: [
+        {
+          id: 'security-checkpoint',
+          name: 'Security Checkpoint',
+        },
+        {
+          id: 'gate-b12',
+          name: 'Gate B12',
+          seatInfo: {
+            gate: 'B12',
+            entrance: 'Terminal 1, West Wing',
+          },
+          restrictions: {
+            maxOccupancy: 200,
+          },
+        },
+        {
+          id: 'aircraft-tk1234',
+          name: 'Aircraft TK1234',
+          seatInfo: {
+            class: 'business',
+            section: 'Business Class',
+            row: '12',
+            seat: 'B', // Adjacent seat
+            seatPosition: 'middle',
+            seatType: 'business',
+          },
+        },
+      ],
+      branding: {
+        primaryColor: '#C70039',
+        backgroundColor: '#C70039',
+        textColor: '#FFFFFF',
+        logoUrl: 'https://airline.com/logo.png',
+        organizationName: 'Turkish Airlines',
+        template: 'modern',
+      },
+      metadata: {
+        flightNumber: 'TK1234',
+        ticketNumber: '1762384950123-2', // Same base, different suffix
+        pnr: 'ABC123',
+        passengerNumber: '2',
+        totalPassengers: 2,
+        departure: 'IST',
+        arrival: 'JFK',
+        departureTime: '2025-07-15T10:30:00Z',
+        arrivalTime: '2025-07-15T13:45:00Z',
+        seat: '12B',
+        gate: 'B12',
+        carrier: 'Turkish Airlines',
+        operatedBy: 'Turkish Airlines',
+      },
+      generateQR: true,
+      generateAppleWallet: true,
+      generateGoogleWallet: true,
+    } as CreatePassRequest,
+  });
+
+  console.log('✅ Boarding pass created (Business Class - Passenger 2):');
+  console.log(`   Pass ID: ${boardingPass2.passId}`);
+  console.log(`   E-Ticket: ${boardingPass2.metadata?.ticketNumber} (Passenger ${boardingPass2.metadata?.passengerNumber}/${boardingPass2.metadata?.totalPassengers})`);
+  console.log(`   Passenger: ${boardingPass2.holder.name}`);
+  console.log(`   Flight: ${boardingPass2.metadata?.flightNumber} - ${boardingPass2.metadata?.carrier}`);
+  console.log(`   Seat: ${boardingPass2.metadata?.seat} (Middle, next to 12A)`);
+  console.log(`   PNR: ${boardingPass2.metadata?.pnr} (shared with Michael Chen)`);
   console.log();
 
   // ========================================================================
@@ -271,6 +370,7 @@ async function main() {
         email: 'lisa.martinez@email.com',
         customFields: {
           ticketNumber: '1769876543210',
+          passengerNumber: '1', // Solo traveler
           pnr: 'XYZ789',
           confirmationCode: 'XYZ789',
           frequent_flyer: null,
@@ -318,8 +418,10 @@ async function main() {
       },
       metadata: {
         flightNumber: 'AA456',
-        ticketNumber: '1769876543210',
+        ticketNumber: '1769876543210-1', // Solo traveler
         pnr: 'XYZ789',
+        passengerNumber: '1',
+        totalPassengers: 1,
         departure: 'LAX',
         arrival: 'ORD',
         departureTime: '2025-08-10T08:15:00Z',
