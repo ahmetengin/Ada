@@ -87,20 +87,37 @@ export interface PassValidity {
 }
 
 export interface SeatInfo {
-  section?: string; // Section (e.g., 'A', 'Balcony', 'VIP')
+  // Concert/Congress/Theater seating
+  section?: string; // Section (e.g., 'A', 'Balcony', 'VIP', 'Orchestra')
   row?: string; // Row (e.g., '12', 'K')
   seat?: string; // Seat number (e.g., '45', '12A')
-  seatType?: 'standard' | 'vip' | 'accessible' | 'premium' | 'balcony';
-  floor?: string; // Floor level (e.g., 'Ground', '1st Floor')
+  seatType?: 'standard' | 'vip' | 'accessible' | 'premium' | 'balcony' | 'economy' | 'business' | 'first-class';
+  floor?: string; // Floor level (e.g., 'Ground', '1st Floor', 'Mezzanine')
   gate?: string; // Entry gate (e.g., 'Gate A', 'West Entrance')
   entrance?: string; // Specific entrance
 
-  // Additional details
-  table?: string; // For dining (e.g., 'Table 7')
-  booth?: string; // For exhibitions
-  pier?: string; // For marine events
-  deck?: string; // For yachts
-  cabin?: string; // For ships/yachts
+  // Flight/Aircraft specific
+  class?: 'economy' | 'premium-economy' | 'business' | 'first-class'; // Travel class
+  seatPosition?: 'window' | 'middle' | 'aisle'; // Seat position in aircraft
+
+  // Restaurant/Dining/Gala/Wedding
+  table?: string; // Table number/name (e.g., 'Table 7', 'King's Table')
+  tableType?: 'round' | 'rectangular' | 'vip' | 'head-table' | 'bridal-table'; // Table type
+  tableCapacity?: number; // Number of seats at table
+
+  // Wedding/Gala specific
+  guestType?: 'bride-family' | 'groom-family' | 'friend' | 'vip' | 'speaker' | 'sponsor'; // Guest category
+  meal?: 'vegetarian' | 'vegan' | 'halal' | 'kosher' | 'standard' | 'pescatarian'; // Meal preference
+
+  // Exhibition/Fair
+  booth?: string; // Booth number (e.g., 'A-23', 'Hall 2 - Booth 15')
+  hallNumber?: string; // Exhibition hall
+
+  // Marine/Yacht specific
+  pier?: string; // Pier number (e.g., 'Pier 7')
+  deck?: string; // Deck level (e.g., 'Upper Deck', 'Main Deck', 'Sun Deck')
+  cabin?: string; // Cabin number (e.g., 'Cabin 12A', 'Starboard Suite 3')
+  berth?: string; // Berth/dock position
 }
 
 export interface PassZone {

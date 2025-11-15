@@ -125,6 +125,10 @@ async function main() {
             table: 'Table 5',
             seat: 'Seat 3',
             seatType: 'vip',
+            tableType: 'round',
+            tableCapacity: 10,
+            guestType: 'speaker',
+            meal: 'vegetarian',
           },
           restrictions: {
             requiresPreAuth: true,
@@ -204,10 +208,12 @@ async function main() {
           id: 'aircraft-tk1234',
           name: 'Aircraft TK1234',
           seatInfo: {
+            class: 'business',
             section: 'Business Class',
             row: '12',
             seat: 'A',
-            seatType: 'premium',
+            seatPosition: 'window',
+            seatType: 'business',
           },
         },
       ],
@@ -234,11 +240,93 @@ async function main() {
     } as CreatePassRequest,
   });
 
-  console.log('✅ Boarding pass created:');
+  console.log('✅ Boarding pass created (Business Class):');
   console.log(`   Pass ID: ${boardingPass.passId}`);
   console.log(`   Flight: ${boardingPass.metadata?.flightNumber}`);
   console.log(`   Route: ${boardingPass.metadata?.departure} → ${boardingPass.metadata?.arrival}`);
-  console.log(`   Seat: ${boardingPass.metadata?.seat}, Gate: ${boardingPass.metadata?.gate}`);
+  console.log(`   Class: Business, Seat: ${boardingPass.metadata?.seat} (Window), Gate: ${boardingPass.metadata?.gate}`);
+  console.log();
+
+  // ========================================================================
+  // EXAMPLE 2B: ECONOMY CLASS BOARDING PASS
+  // ========================================================================
+
+  console.log('✈️  EXAMPLE 2B: Economy Class Boarding Pass\n');
+
+  const economyBoardingPass = await passKit.processTask({
+    type: 'create-pass',
+    data: {
+      domain: 'ada.travel' as PassDomain,
+      passType: 'BOARDING_PASS' as PassType,
+      holder: {
+        name: 'Lisa Martinez',
+        email: 'lisa.martinez@email.com',
+        customFields: {
+          pnr: 'XYZ789',
+          frequent_flyer: null,
+        },
+      },
+      validity: {
+        validFrom: new Date('2025-08-10T04:00:00Z'),
+        validTo: new Date('2025-08-10T12:00:00Z'),
+        singleUse: false,
+        maxScans: 3,
+      },
+      zones: [
+        {
+          id: 'security-checkpoint',
+          name: 'Security Checkpoint',
+        },
+        {
+          id: 'gate-c45',
+          name: 'Gate C45',
+          seatInfo: {
+            gate: 'C45',
+            entrance: 'Terminal 2, East Wing',
+          },
+        },
+        {
+          id: 'aircraft-aa456',
+          name: 'Aircraft AA456',
+          seatInfo: {
+            class: 'economy',
+            section: 'Economy',
+            row: '28',
+            seat: 'B',
+            seatPosition: 'middle',
+            seatType: 'economy',
+          },
+        },
+      ],
+      branding: {
+        primaryColor: '#0078D2',
+        backgroundColor: '#0078D2',
+        textColor: '#FFFFFF',
+        logoUrl: 'https://airline.com/logo.png',
+        organizationName: 'American Airlines',
+        template: 'modern',
+      },
+      metadata: {
+        flightNumber: 'AA456',
+        departure: 'LAX',
+        arrival: 'ORD',
+        departureTime: '2025-08-10T08:15:00Z',
+        arrivalTime: '2025-08-10T11:30:00Z',
+        seat: '28B',
+        gate: 'C45',
+        boardingGroup: '4',
+      },
+      generateQR: true,
+      generateAppleWallet: true,
+    } as CreatePassRequest,
+  });
+
+  console.log('✅ Boarding pass created (Economy Class):');
+  console.log(`   Pass ID: ${economyBoardingPass.passId}`);
+  console.log(`   Flight: ${economyBoardingPass.metadata?.flightNumber}`);
+  console.log(`   Route: ${economyBoardingPass.metadata?.departure} → ${economyBoardingPass.metadata?.arrival}`);
+  console.log(`   Class: Economy, Seat: ${economyBoardingPass.metadata?.seat} (Middle), Gate: ${economyBoardingPass.metadata?.gate}`);
+  console.log(`   Boarding Group: ${economyBoardingPass.metadata?.boardingGroup}`);
   console.log();
 
   // ========================================================================
@@ -423,6 +511,13 @@ async function main() {
           id: 'terrace-section',
           name: 'Terrace Seating',
           description: 'Outdoor terrace with sea view',
+          seatInfo: {
+            table: 'T-12',
+            seat: 'Seat 2',
+            tableType: 'round',
+            tableCapacity: 4,
+            meal: 'vegetarian',
+          },
           restrictions: {
             maxOccupancy: 40,
           },
@@ -454,6 +549,96 @@ async function main() {
   console.log(`   Restaurant: ${diningPass.metadata?.restaurantName}`);
   console.log(`   Time: ${diningPass.metadata?.reservationTime}, Table: ${diningPass.metadata?.tableNumber}`);
   console.log(`   Party size: ${diningPass.metadata?.partySize}`);
+  console.log();
+
+  // ========================================================================
+  // EXAMPLE 6: WEDDING INVITATION (ada.restaurant - gala event)
+  // ========================================================================
+
+  console.log('💒 EXAMPLE 6: Wedding Invitation\n');
+
+  const weddingPass = await passKit.processTask({
+    type: 'create-pass',
+    data: {
+      domain: 'ada.restaurant' as PassDomain,
+      passType: 'DINING_RESERVATION' as PassType,
+      holder: {
+        name: 'Mr. John Smith & Guest',
+        email: 'john.smith@email.com',
+        phone: '+1-555-9876',
+        customFields: {
+          guestCount: 2,
+          relationship: 'Friend of Groom',
+        },
+      },
+      validity: {
+        validFrom: new Date('2025-11-15T16:00:00Z'),
+        validTo: new Date('2025-11-15T23:00:00Z'),
+        allowedTimeRanges: [
+          { start: '16:00', end: '23:00' },
+        ],
+        singleUse: true,
+      },
+      zones: [
+        {
+          id: 'wedding-ceremony',
+          name: 'Wedding Ceremony Hall',
+          description: 'Main ceremony venue',
+          seatInfo: {
+            section: 'Groom Side',
+            row: 'F',
+            seat: '12-13',
+            seatType: 'standard',
+          },
+        },
+        {
+          id: 'wedding-reception',
+          name: 'Wedding Reception',
+          description: 'Dinner reception and celebration',
+          seatInfo: {
+            table: 'Table 8',
+            seat: 'Seats 5-6',
+            tableType: 'round',
+            tableCapacity: 10,
+            guestType: 'friend',
+            meal: 'halal',
+          },
+        },
+        {
+          id: 'photo-booth',
+          name: 'Photo Booth Area',
+          description: 'Guest photo opportunities',
+        },
+      ],
+      branding: {
+        primaryColor: '#D4AF37',
+        backgroundColor: '#FFFFFF',
+        textColor: '#2C3E50',
+        logoUrl: 'https://wedding.com/couple-logo.png',
+        organizationName: 'Sarah & Michael Wedding',
+        template: 'luxury',
+      },
+      metadata: {
+        eventName: 'Sarah & Michael Wedding',
+        eventDate: '2025-11-15',
+        venueName: 'Grand Ballroom Hotel',
+        ceremonyTime: '17:00',
+        receptionTime: '18:30',
+        dressCode: 'Black Tie',
+        rsvpStatus: 'Confirmed',
+      },
+      generateQR: true,
+      generateAppleWallet: true,
+      generatePDF: true,
+    } as CreatePassRequest,
+  });
+
+  console.log('✅ Wedding invitation pass created:');
+  console.log(`   Pass ID: ${weddingPass.passId}`);
+  console.log(`   Event: ${weddingPass.metadata?.eventName}`);
+  console.log(`   Ceremony: ${weddingPass.metadata?.ceremonyTime}, Reception: ${weddingPass.metadata?.receptionTime}`);
+  console.log(`   Table: ${weddingPass.zones[1]?.seatInfo?.table}, Seats: ${weddingPass.zones[1]?.seatInfo?.seat}`);
+  console.log(`   Meal: ${weddingPass.zones[1]?.seatInfo?.meal?.toUpperCase()}`);
   console.log();
 
   // ========================================================================
