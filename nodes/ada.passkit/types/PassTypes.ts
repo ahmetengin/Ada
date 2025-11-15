@@ -1,0 +1,332 @@
+/**
+ * PassTypes - Domain-agnostic pass type definitions
+ *
+ * Universal pass model that can be used by:
+ * - ada.congress (conference badges, speaker passes)
+ * - ada.travel (boarding passes, hotel vouchers)
+ * - ada.sea (yacht boarding, marina access)
+ * - ada.marina (berth passes, facility access)
+ * - ada.interpreter (language selection passes)
+ */
+
+// ============================================================================
+// CORE PASS MODEL
+// ============================================================================
+
+export type PassDomain =
+  | 'ada.congress'
+  | 'ada.travel'
+  | 'ada.sea'
+  | 'ada.marina'
+  | 'ada.interpreter'
+  | 'ada.restaurant'
+  | 'ada.maintenance';
+
+export type PassType =
+  // Congress types
+  | 'CONGRESS_BADGE'
+  | 'SPEAKER_PASS'
+  | 'VIP_PASS'
+  | 'STAFF_PASS'
+  | 'PRESS_PASS'
+
+  // Travel types
+  | 'BOARDING_PASS'
+  | 'HOTEL_VOUCHER'
+  | 'TOUR_TICKET'
+  | 'TRANSFER_VOUCHER'
+
+  // Marine types
+  | 'YACHT_BOARDING'
+  | 'MARINA_ACCESS'
+  | 'BERTH_PASS'
+  | 'FACILITY_ACCESS'
+  | 'GUEST_PASS'
+
+  // Interpreter types
+  | 'LANGUAGE_PASS'
+  | 'LIVE_STREAM_ACCESS'
+
+  // Restaurant types
+  | 'DINING_RESERVATION'
+  | 'MEAL_VOUCHER'
+
+  // Generic
+  | 'GENERIC_TICKET'
+  | 'ACCESS_CARD';
+
+export type PassStatus =
+  | 'active'
+  | 'pending'
+  | 'expired'
+  | 'revoked'
+  | 'redeemed';
+
+export interface PassHolder {
+  name: string;
+  email?: string;
+  phone?: string;
+  role?: string;
+  company?: string;
+  customFields?: Record<string, any>;
+}
+
+export interface PassValidity {
+  validFrom: Date;
+  validTo: Date;
+  timezone?: string;
+
+  // Time-based restrictions
+  allowedDays?: ('monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday')[];
+  allowedTimeRanges?: Array<{ start: string; end: string }>; // HH:mm format
+
+  // Usage limits
+  maxScans?: number;
+  currentScans?: number;
+  singleUse?: boolean;
+}
+
+export interface SeatInfo {
+  // Concert/Congress/Theater seating
+  section?: string; // Section (e.g., 'A', 'Balcony', 'VIP', 'Orchestra')
+  row?: string; // Row (e.g., '12', 'K')
+  seat?: string; // Seat number (e.g., '45', '12A')
+  seatType?: 'standard' | 'vip' | 'accessible' | 'premium' | 'balcony' | 'economy' | 'business' | 'first-class';
+  floor?: string; // Floor level (e.g., 'Ground', '1st Floor', 'Mezzanine')
+  gate?: string; // Entry gate (e.g., 'Gate A', 'West Entrance')
+  entrance?: string; // Specific entrance
+
+  // Flight/Aircraft specific
+  class?: 'economy' | 'premium-economy' | 'business' | 'first-class'; // Travel class
+  seatPosition?: 'window' | 'middle' | 'aisle'; // Seat position in aircraft
+
+  // Restaurant/Dining/Gala/Wedding
+  table?: string; // Table number/name (e.g., 'Table 7', 'King's Table')
+  tableType?: 'round' | 'rectangular' | 'vip' | 'head-table' | 'bridal-table'; // Table type
+  tableCapacity?: number; // Number of seats at table
+
+  // Wedding/Gala specific
+  guestType?: 'bride-family' | 'groom-family' | 'friend' | 'vip' | 'speaker' | 'sponsor'; // Guest category
+  meal?: 'vegetarian' | 'vegan' | 'halal' | 'kosher' | 'standard' | 'pescatarian'; // Meal preference
+
+  // Exhibition/Fair
+  booth?: string; // Booth number (e.g., 'A-23', 'Hall 2 - Booth 15')
+  hallNumber?: string; // Exhibition hall
+
+  // Marine/Yacht specific
+  pier?: string; // Pier number (e.g., 'Pier 7')
+  deck?: string; // Deck level (e.g., 'Upper Deck', 'Main Deck', 'Sun Deck')
+  cabin?: string; // Cabin number (e.g., 'Cabin 12A', 'Starboard Suite 3')
+  berth?: string; // Berth/dock position
+}
+
+export interface PassZone {
+  id: string;
+  name: string;
+  description?: string;
+
+  // Seat assignment (for concerts, congresses, theaters, etc.)
+  seatInfo?: SeatInfo;
+
+  restrictions?: {
+    requiresEscort?: boolean;
+    maxOccupancy?: number;
+    requiresPreAuth?: boolean;
+  };
+}
+
+export interface QRPayload {
+  namespace: PassDomain;
+  type: 'access' | 'boarding' | 'payment' | 'identity' | 'redemption';
+  id: string;
+  scopes: string[];
+
+  // Security
+  signature?: string;
+  nonce?: string;
+  issuedAt?: Date;
+  expiresAt?: Date;
+
+  // Custom data
+  metadata?: Record<string, any>;
+}
+
+export interface PassBranding {
+  // Visual theme
+  primaryColor?: string;
+  secondaryColor?: string;
+  textColor?: string;
+  backgroundColor?: string;
+
+  // Logos & images
+  logoUrl?: string;
+  bannerUrl?: string;
+  iconUrl?: string;
+
+  // Organization
+  organizationName?: string;
+  organizationId?: string;
+
+  // Template
+  template?: 'modern' | 'classic' | 'minimal' | 'luxury';
+}
+
+export interface Pass {
+  // Core identity
+  passId: string;
+  domain: PassDomain;
+  passType: PassType;
+
+  // Holder information
+  holder: PassHolder;
+
+  // Validity & access
+  validity: PassValidity;
+  zones: PassZone[];
+
+  // QR code data
+  qrPayload: QRPayload;
+  qrCode?: string; // Base64 encoded QR image or SVG
+
+  // Visual branding
+  branding: PassBranding;
+
+  // Status tracking
+  status: PassStatus;
+  createdAt: Date;
+  updatedAt: Date;
+
+  // Wallet integration
+  appleWalletUrl?: string;
+  googleWalletUrl?: string;
+  pdfUrl?: string;
+
+  // Audit trail
+  createdBy?: string;
+  lastModifiedBy?: string;
+
+  // Additional metadata
+  metadata?: Record<string, any>;
+}
+
+// ============================================================================
+// ACCESS POLICY
+// ============================================================================
+
+export interface AccessRule {
+  ruleId: string;
+  passType: PassType;
+  zoneId: string;
+
+  // Time restrictions
+  allowedDays?: string[];
+  allowedTimeRanges?: Array<{ start: string; end: string }>;
+
+  // Capacity restrictions
+  maxOccupancy?: number;
+  currentOccupancy?: number;
+
+  // Authorization requirements
+  requiresPreAuth?: boolean;
+  requiresEscort?: boolean;
+  escortRole?: string;
+
+  // Conditions
+  conditions?: Record<string, any>;
+}
+
+export interface AccessValidationResult {
+  allowed: boolean;
+  reason?: string;
+  restrictions?: string[];
+  metadata?: Record<string, any>;
+}
+
+export interface ScanLog {
+  logId: string;
+  passId: string;
+  scannedAt: Date;
+  scannedBy?: string;
+  location?: string;
+  zoneId?: string;
+  result: AccessValidationResult;
+  deviceInfo?: {
+    deviceId?: string;
+    deviceType?: string;
+    appVersion?: string;
+  };
+}
+
+// ============================================================================
+// PASS CREATION REQUEST
+// ============================================================================
+
+export interface CreatePassRequest {
+  domain: PassDomain;
+  passType: PassType;
+  holder: PassHolder;
+  validity: PassValidity;
+  zones: PassZone[];
+  branding?: Partial<PassBranding>;
+  metadata?: Record<string, any>;
+
+  // Auto-generate QR?
+  generateQR?: boolean;
+
+  // Generate wallet passes?
+  generateAppleWallet?: boolean;
+  generateGoogleWallet?: boolean;
+  generatePDF?: boolean;
+}
+
+export interface UpdatePassRequest {
+  passId: string;
+  updates: {
+    status?: PassStatus;
+    validity?: Partial<PassValidity>;
+    zones?: PassZone[];
+    metadata?: Record<string, any>;
+  };
+  reason?: string;
+  updatedBy?: string;
+}
+
+export interface RevokePassRequest {
+  passId: string;
+  reason: string;
+  revokedBy: string;
+  notifyHolder?: boolean;
+}
+
+export interface ValidatePassRequest {
+  passId: string;
+  zoneId: string;
+  scannedAt?: Date;
+  scannedBy?: string;
+  location?: string;
+}
+
+// ============================================================================
+// STATISTICS
+// ============================================================================
+
+export interface PassStatistics {
+  domain: PassDomain;
+  totalPasses: number;
+  activepasses: number;
+  expiredPasses: number;
+  revokedPasses: number;
+
+  byType: Record<PassType, number>;
+  byStatus: Record<PassStatus, number>;
+
+  scanActivity: {
+    totalScans: number;
+    uniquePasses: number;
+    avgScansPerPass: number;
+    scansByZone: Record<string, number>;
+    scansByHour: Record<string, number>;
+  };
+}
+
+export default Pass;
