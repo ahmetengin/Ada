@@ -4,6 +4,59 @@
 
 > *"Sen yoktun o zaman. Ama şimdi varsın, ve Ada o deneyimi ölçeklendiriyor."*
 
+## 🚀 **NEW: Distributed Node Communication**
+
+Ada node'ları artık **dağıtık ortamda** (farklı process'ler, farklı makineler) birbiriyle iletişim kurabilir!
+
+### ✨ Yeni Özellikler
+
+- ✅ **WebSocket Transport** - Real-time bidirectional communication
+- ✅ **Redis Pub/Sub Transport** - Scalable message broker
+- ✅ **Service Discovery** - Automatic node discovery via NodeRegistry
+- ✅ **Hybrid Mode** - Local (in-process) + Distributed (network) communication
+- ✅ **Backward Compatible** - Mevcut kod değişiklik gerektirmiyor
+
+### 📖 Dokümantasyon
+
+👉 **[Distributed Communication Guide](./docs/DISTRIBUTED-COMMUNICATION.md)** - Detaylı kullanım ve örnekler
+
+### 🎯 Hızlı Kullanım
+
+```bash
+# Registry başlat
+npm run registry
+
+# Distributed demo çalıştır
+npm run demo:distributed
+```
+
+```typescript
+import { DistributedNodeCommunication } from './core/DistributedNodeCommunication.js';
+import { WebSocketTransport } from './core/transport/WebSocketTransport.js';
+
+const transport = new WebSocketTransport({
+  nodeId: 'node-1',
+  nodeName: 'Node 1',
+  host: 'localhost',
+  port: 8080
+});
+
+const node = new DistributedNodeCommunication({
+  nodeId: 'node-1',
+  nodeName: 'Node 1',
+  nodeType: 'ada.sea',
+  mode: 'hybrid',
+  transport
+});
+
+await node.start();
+
+// Remote node'a mesaj gönder
+await node.request('node-2', 'task', { data: 'process this' });
+```
+
+---
+
 ### VHF Marine Radio Monitoring (Ada.Sea)
 
 Ada.Sea includes **comprehensive VHF marine radio monitoring** with Software-Defined Radio (SDR), Voice Activity Detection (VAD), and Speech-to-Text (STT) transcription:
