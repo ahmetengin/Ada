@@ -10,6 +10,8 @@
     "dev": "tsx watch examples/ecosystem-demo.ts",
     "demo:legal": "tsx examples/legal-consultation-demo.ts",
     "demo:mcp": "tsx examples/mcp-optimization-demo.ts",
+    "demo:distributed": "tsx examples/distributed-communication-demo.ts",
+    "registry": "tsx examples/start-registry.ts",
     "test": "jest"
   },
   "keywords": [
@@ -29,11 +31,14 @@
     "axios": "^1.13.2",
     "date-fns": "^3.0.0",
     "eventemitter3": "^5.0.1",
+    "express": "^4.18.2",
     "neo4j-driver": "^6.0.1",
+    "redis": "^4.6.12",
     "uuid": "^9.0.1",
     "ws": "^8.18.3"
   },
   "devDependencies": {
+    "@types/express": "^4.17.21",
     "@types/jest": "^29.5.14",
     "@types/node": "^20.10.0",
     "@types/uuid": "^9.0.7",
