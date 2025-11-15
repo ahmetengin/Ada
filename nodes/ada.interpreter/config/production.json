@@ -1,0 +1,79 @@
+{
+  "interpreter": {
+    "name": "Ada.Interpreter Production",
+    "supportedLanguages": ["en", "tr", "ar", "ru", "el", "fr", "de", "it"],
+    "primaryLanguage": "en",
+    "maxLatency": 500,
+    "qualityMode": "balanced"
+  },
+  "whisper": {
+    "model": "whisper-1",
+    "temperature": 0.0,
+    "responseFormat": "verbose_json",
+    "maxRetries": 3,
+    "timeout": 30000
+  },
+  "claude": {
+    "model": "claude-sonnet-4-5-20250929",
+    "maxTokens": 2000,
+    "temperature": 0.3,
+    "maxRetries": 3,
+    "timeout": 30000
+  },
+  "streaming": {
+    "port": 8080,
+    "maxConnections": 1000,
+    "heartbeatInterval": 30000,
+    "compression": true
+  },
+  "database": {
+    "host": "localhost",
+    "port": 5432,
+    "database": "ada_interpreter",
+    "pool": {
+      "min": 5,
+      "max": 20,
+      "idleTimeoutMillis": 30000
+    }
+  },
+  "redis": {
+    "host": "localhost",
+    "port": 6379,
+    "db": 0,
+    "keyPrefix": "ada:interpreter:",
+    "ttl": 86400
+  },
+  "passkit": {
+    "endpoint": "https://congress.kites.com/passkit",
+    "apiKey": "${PASSKIT_API_KEY}",
+    "timeout": 5000
+  },
+  "monitoring": {
+    "enabled": true,
+    "metricsPort": 9090,
+    "prometheusEnabled": true,
+    "loggingLevel": "info",
+    "sampleRate": 1.0
+  },
+  "performance": {
+    "enableCaching": true,
+    "cacheTTL": 3600,
+    "maxConcurrentSegments": 100,
+    "queueSize": 1000,
+    "processingTimeout": 10000
+  },
+  "security": {
+    "enableSSL": true,
+    "cors": {
+      "enabled": true,
+      "origins": ["https://congress.kites.com"],
+      "methods": ["GET", "POST", "OPTIONS"],
+      "credentials": true
+    },
+    "rateLimit": {
+      "enabled": true,
+      "windowMs": 60000,
+      "maxRequests": 1000
+    }
+  }
+}
