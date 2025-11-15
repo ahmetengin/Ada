@@ -99,6 +99,14 @@ async function main() {
           id: 'main-hall',
           name: 'Main Conference Hall',
           description: 'Keynote and plenary sessions',
+          seatInfo: {
+            section: 'VIP',
+            row: 'A',
+            seat: '12',
+            seatType: 'premium',
+            floor: 'Ground Floor',
+            gate: 'Main Entrance',
+          },
         },
         {
           id: 'speaker-lounge',
@@ -113,6 +121,11 @@ async function main() {
           id: 'vip-dinner',
           name: 'VIP Gala Dinner',
           description: 'Evening gala dinner',
+          seatInfo: {
+            table: 'Table 5',
+            seat: 'Seat 3',
+            seatType: 'vip',
+          },
           restrictions: {
             requiresPreAuth: true,
           },
@@ -179,6 +192,10 @@ async function main() {
         {
           id: 'gate-b12',
           name: 'Gate B12',
+          seatInfo: {
+            gate: 'B12',
+            entrance: 'Terminal 1, West Wing',
+          },
           restrictions: {
             maxOccupancy: 200,
           },
@@ -186,6 +203,12 @@ async function main() {
         {
           id: 'aircraft-tk1234',
           name: 'Aircraft TK1234',
+          seatInfo: {
+            section: 'Business Class',
+            row: '12',
+            seat: 'A',
+            seatType: 'premium',
+          },
         },
       ],
       branding: {

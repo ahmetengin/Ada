@@ -17,6 +17,7 @@ export type {
   PassHolder,
   PassValidity,
   PassZone,
+  SeatInfo,
   QRPayload,
   PassBranding,
   CreatePassRequest,

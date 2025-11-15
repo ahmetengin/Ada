@@ -86,10 +86,31 @@ export interface PassValidity {
   singleUse?: boolean;
 }
 
+export interface SeatInfo {
+  section?: string; // Section (e.g., 'A', 'Balcony', 'VIP')
+  row?: string; // Row (e.g., '12', 'K')
+  seat?: string; // Seat number (e.g., '45', '12A')
+  seatType?: 'standard' | 'vip' | 'accessible' | 'premium' | 'balcony';
+  floor?: string; // Floor level (e.g., 'Ground', '1st Floor')
+  gate?: string; // Entry gate (e.g., 'Gate A', 'West Entrance')
+  entrance?: string; // Specific entrance
+
+  // Additional details
+  table?: string; // For dining (e.g., 'Table 7')
+  booth?: string; // For exhibitions
+  pier?: string; // For marine events
+  deck?: string; // For yachts
+  cabin?: string; // For ships/yachts
+}
+
 export interface PassZone {
   id: string;
   name: string;
   description?: string;
+
+  // Seat assignment (for concerts, congresses, theaters, etc.)
+  seatInfo?: SeatInfo;
+
   restrictions?: {
     requiresEscort?: boolean;
     maxOccupancy?: number;
