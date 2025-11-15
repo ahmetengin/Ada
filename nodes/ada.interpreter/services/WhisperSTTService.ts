@@ -3,8 +3,7 @@
  * Real-time speech-to-text using OpenAI Whisper API
  */
 
-import fetch from 'node-fetch';
-import FormData from 'form-data';
+import { FormData } from 'formdata-node';
 
 export interface WhisperConfig {
   apiKey: string;
@@ -54,10 +53,10 @@ export class WhisperSTTService {
   async transcribe(audioBuffer: Buffer, filename: string = 'audio.mp3'): Promise<WhisperResponse> {
     try {
       const formData = new FormData();
-      formData.append('file', audioBuffer, {
-        filename,
-        contentType: this.getContentType(filename)
-      });
+
+      // Create a Blob from the buffer
+      const blob = new Blob([audioBuffer], { type: this.getContentType(filename) });
+      formData.append('file', blob, filename);
       formData.append('model', this.config.model!);
 
       if (this.config.language) {
@@ -77,8 +76,7 @@ export class WhisperSTTService {
       const response = await fetch(this.apiEndpoint, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${this.config.apiKey}`,
-          ...formData.getHeaders()
+          'Authorization': `Bearer ${this.config.apiKey}`
         },
         body: formData
       });

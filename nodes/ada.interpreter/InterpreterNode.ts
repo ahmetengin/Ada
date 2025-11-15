@@ -17,6 +17,8 @@
 
 import { BaseNode, BaseNodeOptions } from '../../core/BaseNode.js';
 import { v4 as uuidv4 } from 'uuid';
+import { WhisperSTTService } from './services/WhisperSTTService.js';
+import { ClaudeTranslationService } from './services/ClaudeTranslationService.js';
 
 // ============================================================================
 // CONFIGURATION INTERFACES
@@ -35,6 +37,10 @@ export interface InterpreterNodeConfig extends Omit<BaseNodeOptions, 'type' | 'c
     room: string;
     targetLanguages: LanguageCode[];
     passkitEndpoint?: string;
+  };
+  apiKeys: {
+    openai: string;
+    anthropic: string;
   };
 }
 
@@ -147,6 +153,10 @@ export class InterpreterNode extends BaseNode {
   private interpreterInfo: InterpreterNodeConfig['interpreterInfo'];
   private sessionInfo?: InterpreterNodeConfig['sessionInfo'];
 
+  // AI Services
+  private whisperService: WhisperSTTService;
+  private translationService: ClaudeTranslationService;
+
   // Processing state
   private activeSegments: Map<string, AudioSegment> = new Map();
   private transcriptionCache: Map<string, TranscriptionResult> = new Map();
@@ -178,6 +188,20 @@ export class InterpreterNode extends BaseNode {
 
     this.interpreterInfo = config.interpreterInfo;
     this.sessionInfo = config.sessionInfo;
+
+    // Initialize AI services
+    this.whisperService = new WhisperSTTService({
+      apiKey: config.apiKeys.openai,
+      responseFormat: 'verbose_json',
+      temperature: 0.0
+    });
+
+    this.translationService = new ClaudeTranslationService({
+      apiKey: config.apiKeys.anthropic,
+      model: 'claude-sonnet-4-5-20250929',
+      maxTokens: 2000,
+      temperature: 0.3
+    });
 
     this.initializeLanguageModels();
     this.setupStreamingPipeline();
@@ -319,9 +343,25 @@ export class InterpreterNode extends BaseNode {
   }
 
   private async callSTTEngine(audioData: ArrayBuffer | string): Promise<string> {
-    // Placeholder - integrate with actual STT engine (Whisper, etc.)
-    // In production, this would make an API call or use a local model
-    return "This is sample transcribed text from the audio segment.";
+    try {
+      // Convert ArrayBuffer to Buffer if needed
+      let buffer: Buffer;
+      if (typeof audioData === 'string') {
+        // Base64 string
+        buffer = Buffer.from(audioData, 'base64');
+      } else {
+        // ArrayBuffer
+        buffer = Buffer.from(audioData);
+      }
+
+      // Call Whisper API
+      const result = await this.whisperService.transcribe(buffer, 'audio.webm');
+
+      return result.text;
+    } catch (error) {
+      this.log(`Whisper STT error: ${error}`, 'error');
+      throw new Error(`Speech-to-text failed: ${error}`);
+    }
   }
 
   private cleanTranscription(text: string): string {
@@ -437,13 +477,23 @@ export class InterpreterNode extends BaseNode {
   }
 
   private async translateText(text: string, fromLang: LanguageCode, toLang: LanguageCode): Promise<string> {
-    // Placeholder - integrate with actual translation engine
-    // In production, use Claude, GPT, or specialized translation APIs
+    try {
+      this.log(`Translating ${fromLang} → ${toLang}`, 'info');
 
-    this.log(`Translating ${fromLang} → ${toLang}`, 'info');
+      const result = await this.translationService.translateSingle(
+        text,
+        fromLang,
+        toLang,
+        'Conference interpretation',
+        'conversational'
+      );
 
-    // For now, return a placeholder translation
-    return `[${toLang.toUpperCase()}] ${text}`;
+      return result;
+    } catch (error) {
+      this.log(`Translation error: ${error}`, 'error');
+      // Fallback to placeholder if translation fails
+      return `[Translation failed for ${toLang}]`;
+    }
   }
 
   // ========================================================================
