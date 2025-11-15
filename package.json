@@ -11,6 +11,7 @@
     "demo:legal": "tsx examples/legal-consultation-demo.ts",
     "demo:mcp": "tsx examples/mcp-optimization-demo.ts",
     "demo:distributed": "tsx examples/distributed-communication-demo.ts",
+    "demo:migration": "tsx examples/migrate-to-distributed.ts",
     "registry": "tsx examples/start-registry.ts",
     "test": "jest"
   },
