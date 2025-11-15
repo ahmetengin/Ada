@@ -15,7 +15,9 @@ export type NodeType =
   | 'ada.hukuk'
   | 'ada.restaurant'
   | 'ada.customer'
-  | 'ada.chatbot';
+  | 'ada.chatbot'
+  | 'ada.interpreter'
+  | 'ada.passkit';
 
 export interface NodeIdentity {
   id: string;
