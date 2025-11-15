@@ -4,9 +4,23 @@
  */
 
 import { InterpreterNode, AudioSegment } from '../InterpreterNode.js';
+import * as dotenv from 'dotenv';
+
+// Load environment variables
+dotenv.config();
 
 async function main() {
   console.log('🎤 Ada.Interpreter - Basic Usage Example\n');
+
+  // Check for required API keys
+  const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+  const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+
+  if (!OPENAI_API_KEY || !ANTHROPIC_API_KEY) {
+    console.error('❌ Error: Missing API keys!');
+    console.error('Please set OPENAI_API_KEY and ANTHROPIC_API_KEY in your .env file');
+    process.exit(1);
+  }
 
   // ========================================================================
   // 1. Initialize Interpreter
@@ -28,6 +42,10 @@ async function main() {
       room: 'Main Hall',
       targetLanguages: ['en', 'tr', 'ar'], // Translate to these languages
       passkitEndpoint: 'https://congress.kites.com/passkit'
+    },
+    apiKeys: {
+      openai: OPENAI_API_KEY,
+      anthropic: ANTHROPIC_API_KEY
     }
   });
 
