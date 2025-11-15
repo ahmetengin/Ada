@@ -177,7 +177,9 @@ async function main() {
         name: 'Michael Chen',
         email: 'michael.chen@email.com',
         customFields: {
+          ticketNumber: '1762384950123', // 13-digit e-ticket number
           pnr: 'ABC123',
+          confirmationCode: 'ABC123',
           frequent_flyer: 'TK1234567',
           tier: 'Gold',
         },
@@ -227,12 +229,16 @@ async function main() {
       },
       metadata: {
         flightNumber: 'TK1234',
+        ticketNumber: '1762384950123',
+        pnr: 'ABC123',
         departure: 'IST',
         arrival: 'JFK',
         departureTime: '2025-07-15T10:30:00Z',
         arrivalTime: '2025-07-15T13:45:00Z',
         seat: '12A',
         gate: 'B12',
+        carrier: 'Turkish Airlines',
+        operatedBy: 'Turkish Airlines',
       },
       generateQR: true,
       generateAppleWallet: true,
@@ -242,9 +248,11 @@ async function main() {
 
   console.log('✅ Boarding pass created (Business Class):');
   console.log(`   Pass ID: ${boardingPass.passId}`);
-  console.log(`   Flight: ${boardingPass.metadata?.flightNumber}`);
+  console.log(`   E-Ticket: ${boardingPass.metadata?.ticketNumber}`);
+  console.log(`   Flight: ${boardingPass.metadata?.flightNumber} - ${boardingPass.metadata?.carrier}`);
   console.log(`   Route: ${boardingPass.metadata?.departure} → ${boardingPass.metadata?.arrival}`);
   console.log(`   Class: Business, Seat: ${boardingPass.metadata?.seat} (Window), Gate: ${boardingPass.metadata?.gate}`);
+  console.log(`   PNR: ${boardingPass.metadata?.pnr}`);
   console.log();
 
   // ========================================================================
@@ -262,7 +270,9 @@ async function main() {
         name: 'Lisa Martinez',
         email: 'lisa.martinez@email.com',
         customFields: {
+          ticketNumber: '1769876543210',
           pnr: 'XYZ789',
+          confirmationCode: 'XYZ789',
           frequent_flyer: null,
         },
       },
@@ -308,6 +318,8 @@ async function main() {
       },
       metadata: {
         flightNumber: 'AA456',
+        ticketNumber: '1769876543210',
+        pnr: 'XYZ789',
         departure: 'LAX',
         arrival: 'ORD',
         departureTime: '2025-08-10T08:15:00Z',
@@ -315,6 +327,9 @@ async function main() {
         seat: '28B',
         gate: 'C45',
         boardingGroup: '4',
+        carrier: 'American Airlines',
+        operatedBy: 'American Airlines',
+        sequenceNumber: '0058',
       },
       generateQR: true,
       generateAppleWallet: true,
@@ -323,10 +338,12 @@ async function main() {
 
   console.log('✅ Boarding pass created (Economy Class):');
   console.log(`   Pass ID: ${economyBoardingPass.passId}`);
-  console.log(`   Flight: ${economyBoardingPass.metadata?.flightNumber}`);
+  console.log(`   E-Ticket: ${economyBoardingPass.metadata?.ticketNumber}`);
+  console.log(`   Flight: ${economyBoardingPass.metadata?.flightNumber} - ${economyBoardingPass.metadata?.carrier}`);
   console.log(`   Route: ${economyBoardingPass.metadata?.departure} → ${economyBoardingPass.metadata?.arrival}`);
   console.log(`   Class: Economy, Seat: ${economyBoardingPass.metadata?.seat} (Middle), Gate: ${economyBoardingPass.metadata?.gate}`);
-  console.log(`   Boarding Group: ${economyBoardingPass.metadata?.boardingGroup}`);
+  console.log(`   PNR: ${economyBoardingPass.metadata?.pnr}, Boarding Group: ${economyBoardingPass.metadata?.boardingGroup}`);
+  console.log(`   Sequence: ${economyBoardingPass.metadata?.sequenceNumber}`);
   console.log();
 
   // ========================================================================
