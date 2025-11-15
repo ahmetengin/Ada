@@ -1,0 +1,79 @@
+{
+  "interpreter": {
+    "name": "Ada.Interpreter Development",
+    "supportedLanguages": ["en", "tr", "ar"],
+    "primaryLanguage": "en",
+    "maxLatency": 1000,
+    "qualityMode": "balanced"
+  },
+  "whisper": {
+    "model": "whisper-1",
+    "temperature": 0.0,
+    "responseFormat": "verbose_json",
+    "maxRetries": 2,
+    "timeout": 60000
+  },
+  "claude": {
+    "model": "claude-sonnet-4-5-20250929",
+    "maxTokens": 2000,
+    "temperature": 0.3,
+    "maxRetries": 2,
+    "timeout": 60000
+  },
+  "streaming": {
+    "port": 8080,
+    "maxConnections": 10,
+    "heartbeatInterval": 30000,
+    "compression": false
+  },
+  "database": {
+    "host": "localhost",
+    "port": 5432,
+    "database": "ada_interpreter_dev",
+    "pool": {
+      "min": 2,
+      "max": 5,
+      "idleTimeoutMillis": 30000
+    }
+  },
+  "redis": {
+    "host": "localhost",
+    "port": 6379,
+    "db": 1,
+    "keyPrefix": "ada:interpreter:dev:",
+    "ttl": 3600
+  },
+  "passkit": {
+    "endpoint": "http://localhost:3000/passkit",
+    "apiKey": "dev-key",
+    "timeout": 10000
+  },
+  "monitoring": {
+    "enabled": true,
+    "metricsPort": 9090,
+    "prometheusEnabled": false,
+    "loggingLevel": "debug",
+    "sampleRate": 1.0
+  },
+  "performance": {
+    "enableCaching": false,
+    "cacheTTL": 300,
+    "maxConcurrentSegments": 10,
+    "queueSize": 100,
+    "processingTimeout": 30000
+  },
+  "security": {
+    "enableSSL": false,
+    "cors": {
+      "enabled": true,
+      "origins": ["*"],
+      "methods": ["GET", "POST", "OPTIONS"],
+      "credentials": true
+    },
+    "rateLimit": {
+      "enabled": false,
+      "windowMs": 60000,
+      "maxRequests": 10000
+    }
+  }
+}
