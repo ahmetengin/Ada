@@ -31,6 +31,7 @@ export class CongressNode extends BaseNode {
 
   // Integration nodes
   private travelNodes: string[] = [];
+  private passkitNodes: string[] = [];
 
   constructor(config: CongressNodeConfig) {
     super({
@@ -82,7 +83,18 @@ export class CongressNode extends BaseNode {
       this.travelNodes.push(node.getIdentity().id);
     });
 
-    this.logEvent('Congress node initialized', { id: this.identity.id });
+    // Find and connect to passkit nodes
+    const passkitNodes = BaseNode.findNodesByType('ada.passkit');
+    passkitNodes.forEach(node => {
+      this.connectToNode(node.getIdentity().id);
+      this.passkitNodes.push(node.getIdentity().id);
+    });
+
+    this.logEvent('Congress node initialized', {
+      id: this.identity.id,
+      connectedTravelNodes: this.travelNodes.length,
+      connectedPasskitNodes: this.passkitNodes.length,
+    });
   }
 
   /**
@@ -627,68 +639,93 @@ export class CongressNode extends BaseNode {
     attendee: Attendee;
     event: CongressEvent;
   }): Promise<string> {
-    // In production, this would integrate with Apple PassKit API
-    // For now, generate a mock URL
-    const passId = uuidv4();
+    // Check if PassKit node is available
+    if (this.passkitNodes.length === 0) {
+      console.log('No PassKit node available, using fallback URL');
+      const passId = uuidv4();
+      const passUrl = `https://passes.ada-ecosystem.com/${passId}`;
 
-    const passData = {
-      passTypeIdentifier: 'pass.com.ada.congress',
-      serialNumber: passId,
-      organizationName: this.organizerInfo.name,
-      description: `${data.event.name} - Attendee Pass`,
-      logoText: data.event.name,
-      foregroundColor: 'rgb(255, 255, 255)',
-      backgroundColor: 'rgb(60, 65, 76)',
-      barcode: {
-        message: data.registrationId,
-        format: 'PKBarcodeFormatQR',
-        messageEncoding: 'iso-8859-1',
-      },
-      generic: {
-        primaryFields: [
-          {
-            key: 'name',
-            label: 'Name',
-            value: data.attendee.name,
-          },
-        ],
-        secondaryFields: [
-          {
-            key: 'event',
-            label: 'Event',
-            value: data.event.name,
-          },
-          {
-            key: 'date',
-            label: 'Date',
-            value: data.event.startDate.toLocaleDateString(),
-          },
-        ],
-        auxiliaryFields: [
-          {
-            key: 'venue',
-            label: 'Venue',
-            value: data.event.venue.name,
-          },
-        ],
-      },
-    };
+      // Store pass data in itinerary
+      const itinerary = Array.from(this.itineraries.values()).find(
+        i => i.attendeeId === data.attendee.id
+      );
 
-    // Simulated pass URL
-    const passUrl = `https://passes.ada-ecosystem.com/${passId}`;
+      if (itinerary) {
+        itinerary.applePassUrl = passUrl;
+      }
 
-    // Store pass data in itinerary
-    const itinerary = Array.from(this.itineraries.values()).find(
-      i => i.attendeeId === data.attendee.id
-    );
-
-    if (itinerary) {
-      itinerary.applePassUrl = passUrl;
+      this.remember('data', { passUrl }, ['apple-pass'], 7);
+      return passUrl;
     }
 
-    this.remember('data', { passData, passUrl }, ['apple-pass'], 7);
+    try {
+      // Create pass through PassKit node
+      const passResult = await this.communication.request(
+        this.passkitNodes[0],
+        'create-pass',
+        {
+          domain: 'ada.congress',
+          passType: 'CONGRESS_BADGE',
+          holder: {
+            name: data.attendee.name,
+            email: data.attendee.email,
+            role: 'Attendee',
+          },
+          validity: {
+            validFrom: data.event.startDate,
+            validTo: data.event.endDate,
+          },
+          zones: [
+            {
+              id: 'main-hall',
+              name: 'Main Conference Hall',
+            },
+            {
+              id: 'registration',
+              name: 'Registration Area',
+            },
+          ],
+          branding: {
+            organizationName: this.organizerInfo.name,
+            primaryColor: '#3C414C',
+            secondaryColor: '#FFFFFF',
+            textColor: '#FFFFFF',
+          },
+          metadata: {
+            registrationId: data.registrationId,
+            eventId: data.event.id,
+            eventName: data.event.name,
+            venueName: data.event.venue.name,
+          },
+          generateQR: true,
+          generateAppleWallet: true,
+          generatePDF: false,
+        }
+      );
 
-    return passUrl;
+      const passUrl = passResult.appleWalletUrl || `https://passes.ada-ecosystem.com/${passResult.passId}`;
+
+      // Store pass data in itinerary
+      const itinerary = Array.from(this.itineraries.values()).find(
+        i => i.attendeeId === data.attendee.id
+      );
+
+      if (itinerary) {
+        itinerary.applePassUrl = passUrl;
+      }
+
+      this.remember('data', { passResult, passUrl }, ['apple-pass'], 7);
+
+      console.log(`✅ Apple Pass created for ${data.attendee.name}: ${passUrl}`);
+      return passUrl;
+    } catch (error: any) {
+      console.error('Failed to create Apple Pass through PassKit node:', error.message);
+
+      // Fallback to simple URL
+      const passId = uuidv4();
+      const passUrl = `https://passes.ada-ecosystem.com/${passId}`;
+      return passUrl;
+    }
   }
 
   /**
