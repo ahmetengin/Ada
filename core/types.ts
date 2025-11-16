@@ -1122,3 +1122,147 @@ export interface ContractRiskClause {
   recommendation: string;
   severity: 'low' | 'medium' | 'high' | 'critical';
 }
+
+// ============================================================================
+// PAYMENT & FINANCE TYPES
+// ============================================================================
+
+/**
+ * Payment timing model for different services
+ *
+ * PREPAID: Payment required BEFORE service delivery
+ *   - Example: Flight tickets, congress badges, tour bookings
+ *   - PNR/Reservation can be created, but actual service (ticket/pass) requires payment
+ *
+ * POSTPAID: Service delivered FIRST, payment AFTER
+ *   - Example: Hotel checkout, restaurant dining
+ *   - Reservation is confirmed, payment happens after service consumption
+ *
+ * MIXED: Partial prepayment + balance later
+ *   - Example: Marina berth (advance + monthly), wedding (deposit + final)
+ *   - Requires deposit upfront, remaining balance paid on schedule
+ *
+ * COMPLIMENTARY: No payment required
+ *   - Example: VIP guests, sponsors, speakers
+ *   - Service is free, but tracking is still required
+ */
+export type PaymentPolicy = 'prepaid' | 'postpaid' | 'mixed' | 'complimentary';
+
+export interface PaymentStatus {
+  status: 'pending' | 'authorized' | 'paid' | 'partial' | 'refunded' | 'failed' | 'cancelled';
+
+  // Payment amounts
+  totalAmount: number;
+  paidAmount: number;
+  remainingAmount: number;
+  currency: string;
+
+  // Payment tracking
+  paymentMethod?: 'credit-card' | 'bank-transfer' | 'cash' | 'crypto' | 'invoice';
+  transactionId?: string;
+  paymentGateway?: 'stripe' | 'paytr' | 'iyzico' | 'worldpay';
+
+  // Timing
+  createdAt: Date;
+  paidAt?: Date;
+  authorizedAt?: Date;
+  expiresAt?: Date; // For pending payments
+
+  // Payment schedule (for MIXED policy)
+  schedule?: PaymentScheduleItem[];
+
+  // Refunds
+  refunds?: Array<{
+    amount: number;
+    reason: string;
+    processedAt: Date;
+    transactionId: string;
+  }>;
+}
+
+export interface PaymentScheduleItem {
+  id: string;
+  description: string;
+  amount: number;
+  dueDate: Date;
+  status: 'pending' | 'paid' | 'overdue';
+  paidAt?: Date;
+  transactionId?: string;
+}
+
+export interface PaymentRequirement {
+  policy: PaymentPolicy;
+
+  // For PREPAID
+  requiresPaymentBefore?: 'ticketing' | 'badge-issuance' | 'service-delivery' | 'access-grant';
+
+  // For POSTPAID
+  paymentDueAfter?: 'checkout' | 'meal-completion' | 'service-end';
+
+  // For MIXED
+  depositPercentage?: number; // e.g., 30% upfront
+  balanceDueDate?: Date;
+
+  // Cancellation policy
+  cancellation?: {
+    allowedUntil?: Date;
+    refundPercentage?: number; // 100% = full refund, 50% = half refund
+    penaltyAmount?: number;
+  };
+}
+
+export interface Invoice {
+  invoiceId: string;
+  invoiceNumber: string; // TR12345678901234
+  type: 'proforma' | 'commercial' | 'e-invoice';
+
+  // Turkish e-Invoice (GIB integration)
+  eInvoice?: {
+    uuid: string;
+    gibStatus: 'draft' | 'sent' | 'accepted' | 'rejected';
+    gibSubmittedAt?: Date;
+    gibAcceptedAt?: Date;
+    ettn?: string; // Electronic document tracking number
+  };
+
+  // Parties
+  seller: {
+    name: string;
+    taxId: string; // VKN/TCKN
+    taxOffice: string;
+    address: string;
+  };
+  buyer: {
+    name: string;
+    taxId?: string;
+    taxOffice?: string;
+    address: string;
+    email?: string;
+  };
+
+  // Line items
+  items: Array<{
+    description: string;
+    quantity: number;
+    unitPrice: number;
+    vatRate: number; // 1, 8, 18, 20 (Turkey KDV rates)
+    vatAmount: number;
+    totalAmount: number;
+  }>;
+
+  // Totals
+  subtotal: number;
+  totalVat: number;
+  totalAmount: number;
+  currency: string;
+
+  // Dates
+  issueDate: Date;
+  dueDate?: Date;
+
+  // Status
+  status: 'draft' | 'issued' | 'paid' | 'overdue' | 'cancelled';
+
+  // Related payment
+  paymentId?: string;
+}

@@ -13,6 +13,8 @@ import {
   CongressItinerary,
   ItineraryStep,
   VenueInfo,
+  PaymentStatus,
+  PaymentPolicy,
 } from '../../core/types.js';
 
 export interface CongressNodeConfig extends Omit<BaseNodeOptions, 'type' | 'capabilities'> {
@@ -108,6 +110,8 @@ export class CongressNode extends BaseNode {
         return this.createEvent(data);
       case 'register-attendee':
         return this.registerAttendee(data);
+      case 'confirm-payment':
+        return this.confirmPayment(data);
       case 'create-itinerary':
         return this.createItinerary(data);
       case 'update-step-status':
@@ -232,6 +236,7 @@ export class CongressNode extends BaseNode {
     attendee: Attendee;
     packageType: 'standard' | 'premium' | 'vip';
     homeAddress?: string;
+    isComplimentary?: boolean; // For VIP guests, speakers, sponsors
   }): Promise<any> {
     const event = this.events.get(data.eventId);
 
@@ -253,13 +258,26 @@ export class CongressNode extends BaseNode {
       vip: 2000,
     };
 
+    const amount = data.isComplimentary ? 0 : prices[data.packageType];
+
+    // Create payment status
+    const paymentStatus: PaymentStatus = {
+      status: data.isComplimentary ? 'paid' : 'pending',
+      totalAmount: amount,
+      paidAmount: data.isComplimentary ? amount : 0,
+      remainingAmount: data.isComplimentary ? 0 : amount,
+      currency: 'USD',
+      createdAt: new Date(),
+      paidAt: data.isComplimentary ? new Date() : undefined,
+    };
+
     const registration: CongressRegistration = {
       id: uuidv4(),
       eventId: data.eventId,
       attendee: data.attendee,
       registrationDate: new Date(),
-      paymentStatus: 'pending',
-      amount: prices[data.packageType],
+      paymentStatus: data.isComplimentary ? 'paid' : 'pending',
+      amount,
       currency: 'USD',
       packageType: data.packageType,
     };
@@ -275,17 +293,42 @@ export class CongressNode extends BaseNode {
 
     registration.itinerary = itinerary;
 
-    // Generate Apple Pass
-    const passUrl = await this.generateApplePass({
-      registrationId: registration.id,
-      attendee: data.attendee,
-      event,
-    });
+    // ⚠️ CRITICAL: Pass ONLY generated AFTER payment
+    // For complimentary (VIP/speakers), generate immediately
+    // For paid attendees, pass will be generated in confirmPayment()
+    let passUrl: string | undefined;
+
+    if (data.isComplimentary) {
+      passUrl = await this.generateApplePass({
+        registrationId: registration.id,
+        attendee: data.attendee,
+        event,
+      });
+    } else {
+      // Generate payment link (would integrate with ada.finance)
+      const paymentLink = `https://payment.ada-ecosystem.com/pay/${registration.id}`;
+
+      this.remember(
+        'data',
+        { registration, itinerary, paymentStatus, paymentLink },
+        ['registration', 'pending-payment'],
+        9
+      );
+
+      return {
+        success: true,
+        registration,
+        itinerary,
+        paymentLink,
+        paymentStatus,
+        message: '⚠️ Payment required before badge issuance. Please complete payment to receive your Apple Pass.',
+      };
+    }
 
     this.remember(
       'data',
-      { registration, itinerary, passUrl },
-      ['registration', 'attendee'],
+      { registration, itinerary, passUrl, paymentStatus },
+      ['registration', 'attendee', 'complimentary'],
       9
     );
 
@@ -294,6 +337,78 @@ export class CongressNode extends BaseNode {
       registration,
       itinerary,
       applePassUrl: passUrl,
+      paymentStatus,
+    };
+  }
+
+  /**
+   * Confirm payment and issue pass
+   * Called by payment webhook or manual confirmation
+   */
+  async confirmPayment(data: {
+    registrationId: string;
+    transactionId: string;
+    paidAmount: number;
+    paymentMethod: 'credit-card' | 'bank-transfer' | 'cash';
+  }): Promise<any> {
+    const registration = this.registrations.get(data.registrationId);
+
+    if (!registration) {
+      return { success: false, message: 'Registration not found' };
+    }
+
+    if (registration.paymentStatus === 'paid') {
+      return { success: false, message: 'Already paid' };
+    }
+
+    // Verify payment amount
+    if (data.paidAmount < registration.amount) {
+      return {
+        success: false,
+        message: `Insufficient payment. Required: ${registration.amount}, Received: ${data.paidAmount}`,
+      };
+    }
+
+    // Update payment status
+    registration.paymentStatus = 'paid';
+
+    const event = this.events.get(registration.eventId);
+    if (!event) {
+      return { success: false, message: 'Event not found' };
+    }
+
+    // NOW generate the Apple Pass
+    const passUrl = await this.generateApplePass({
+      registrationId: registration.id,
+      attendee: registration.attendee,
+      event,
+    });
+
+    this.remember(
+      'data',
+      {
+        registrationId: registration.id,
+        transactionId: data.transactionId,
+        paidAmount: data.paidAmount,
+        passUrl,
+      },
+      ['payment', 'confirmed', 'pass-issued'],
+      9
+    );
+
+    this.logEvent('Payment confirmed and pass issued', {
+      registrationId: registration.id,
+      attendee: registration.attendee.name,
+      amount: data.paidAmount,
+      transactionId: data.transactionId,
+    });
+
+    return {
+      success: true,
+      message: '✅ Payment confirmed! Your Apple Pass has been issued.',
+      registration,
+      applePassUrl: passUrl,
+      transactionId: data.transactionId,
     };
   }
 
