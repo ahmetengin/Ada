@@ -64,15 +64,29 @@ async bookFlight(data) {
 **Should Be:**
 ```typescript
 bookFlight()
-  → Create PNR (FREE, 24h hold)
+  → Create PNR with short time limit (10 mins - 6 hours max)
   → paymentStatus: 'pending'
-  → Return PNR + payment link
+  → expiresAt: calculateTimeLimit(airline, class)
+  → Return PNR + payment link + countdown timer
 
 confirmFlightPayment()
-  → Verify payment
+  → Verify payment BEFORE time limit expires
   → Issue ticket
   → Generate boarding pass
+
+// Auto-cancellation
+if (currentTime > expiresAt && paymentStatus !== 'paid') {
+  → Cancel PNR automatically
+  → Release seat inventory
+}
 ```
+
+**Important:**
+- Low-cost carriers: 10-30 minutes only
+- Turkish Airlines: 2-6 hours typical
+- International flights: Up to 24 hours (rare, premium only)
+- Price/availability can change → PNR gets auto-cancelled
+- NO "free 24h hold" - that's a myth!
 
 ##### Hotel Reservation (Line 279-326)
 ```typescript

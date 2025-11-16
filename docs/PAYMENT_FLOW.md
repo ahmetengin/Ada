@@ -53,14 +53,19 @@ confirmPayment() → Issue ticket → Boarding pass
 
 **Flow**:
 1. Search flights
-2. Create PNR (reservation) - **FREE**
-3. Hold PNR for 24 hours
-4. Payment required within hold period
+2. Create PNR (reservation) - **Time-limited hold**
+3. Hold PNR for **short period** (depends on airline/class):
+   - Low-cost carriers: 10-30 minutes only
+   - Turkish Airlines: 2-6 hours typical
+   - International premium: Up to 24 hours (rare cases)
+4. Payment required **before hold expires**
 5. After payment → issue ticket
 6. Generate boarding pass
 
 **Important**:
 - PNR can be sent (it's just a reservation number)
+- **NO "free 24h hold" - time limits are short!**
+- Price/availability changes → PNR auto-cancelled if unpaid
 - Boarding pass ONLY after payment
 - Ticket number ONLY after payment
 
