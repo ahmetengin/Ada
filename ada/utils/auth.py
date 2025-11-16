@@ -1,11 +1,14 @@
 """Authentication utilities for password hashing and JWT token management."""
 
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import bcrypt
 import jwt
 from jwt.exceptions import InvalidTokenError
+
+logger = logging.getLogger(__name__)
 
 
 class PasswordHasher:
@@ -44,7 +47,13 @@ class PasswordHasher:
                 plain_password.encode("utf-8"),
                 hashed_password.encode("utf-8")
             )
-        except Exception:
+        except (ValueError, UnicodeDecodeError) as e:
+            # Log specific errors for security monitoring
+            logger.warning(f"Password verification failed: {type(e).__name__}")
+            return False
+        except Exception as e:
+            # Log unexpected errors
+            logger.error(f"Unexpected error in password verification: {e}")
             return False
 
 

@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     debug: bool = False
     log_level: str = "INFO"
 
+    # CORS Configuration
+    cors_allowed_origins: str = "http://localhost:3000,http://localhost:5173"
+
     # Database
     database_url: str
     database_pool_size: int = 10
@@ -46,7 +49,7 @@ class Settings(BaseSettings):
     faiss_index_path: str = "./data/faiss_indices"
 
     # Security
-    secret_key: str = Field(default="change-this-in-production")
+    secret_key: str = Field(..., min_length=32, description="Secret key for JWT signing (minimum 32 characters)")
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
 
@@ -56,6 +59,10 @@ class Settings(BaseSettings):
     # SEAL Agent
     seal_model: str = "claude-sonnet-4-5-20250929"
     seal_max_iterations: int = 10
+
+    def get_cors_origins(self) -> list[str]:
+        """Parse CORS allowed origins from comma-separated string."""
+        return [origin.strip() for origin in self.cors_allowed_origins.split(",")]
 
 
 @lru_cache
