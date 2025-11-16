@@ -13,6 +13,8 @@ import {
   CongressItinerary,
   ItineraryStep,
   VenueInfo,
+  PaymentStatus,
+  PaymentPolicy,
 } from '../../core/types.js';
 
 export interface CongressNodeConfig extends Omit<BaseNodeOptions, 'type' | 'capabilities'> {
@@ -31,6 +33,7 @@ export class CongressNode extends BaseNode {
 
   // Integration nodes
   private travelNodes: string[] = [];
+  private passkitNodes: string[] = [];
 
   constructor(config: CongressNodeConfig) {
     super({
@@ -82,7 +85,18 @@ export class CongressNode extends BaseNode {
       this.travelNodes.push(node.getIdentity().id);
     });
 
-    this.logEvent('Congress node initialized', { id: this.identity.id });
+    // Find and connect to passkit nodes
+    const passkitNodes = BaseNode.findNodesByType('ada.passkit');
+    passkitNodes.forEach(node => {
+      this.connectToNode(node.getIdentity().id);
+      this.passkitNodes.push(node.getIdentity().id);
+    });
+
+    this.logEvent('Congress node initialized', {
+      id: this.identity.id,
+      connectedTravelNodes: this.travelNodes.length,
+      connectedPasskitNodes: this.passkitNodes.length,
+    });
   }
 
   /**
@@ -96,6 +110,8 @@ export class CongressNode extends BaseNode {
         return this.createEvent(data);
       case 'register-attendee':
         return this.registerAttendee(data);
+      case 'confirm-payment':
+        return this.confirmPayment(data);
       case 'create-itinerary':
         return this.createItinerary(data);
       case 'update-step-status':
@@ -220,6 +236,7 @@ export class CongressNode extends BaseNode {
     attendee: Attendee;
     packageType: 'standard' | 'premium' | 'vip';
     homeAddress?: string;
+    isComplimentary?: boolean; // For VIP guests, speakers, sponsors
   }): Promise<any> {
     const event = this.events.get(data.eventId);
 
@@ -241,13 +258,26 @@ export class CongressNode extends BaseNode {
       vip: 2000,
     };
 
+    const amount = data.isComplimentary ? 0 : prices[data.packageType];
+
+    // Create payment status
+    const paymentStatus: PaymentStatus = {
+      status: data.isComplimentary ? 'paid' : 'pending',
+      totalAmount: amount,
+      paidAmount: data.isComplimentary ? amount : 0,
+      remainingAmount: data.isComplimentary ? 0 : amount,
+      currency: 'USD',
+      createdAt: new Date(),
+      paidAt: data.isComplimentary ? new Date() : undefined,
+    };
+
     const registration: CongressRegistration = {
       id: uuidv4(),
       eventId: data.eventId,
       attendee: data.attendee,
       registrationDate: new Date(),
-      paymentStatus: 'pending',
-      amount: prices[data.packageType],
+      paymentStatus: data.isComplimentary ? 'paid' : 'pending',
+      amount,
       currency: 'USD',
       packageType: data.packageType,
     };
@@ -263,17 +293,42 @@ export class CongressNode extends BaseNode {
 
     registration.itinerary = itinerary;
 
-    // Generate Apple Pass
-    const passUrl = await this.generateApplePass({
-      registrationId: registration.id,
-      attendee: data.attendee,
-      event,
-    });
+    // ⚠️ CRITICAL: Pass ONLY generated AFTER payment
+    // For complimentary (VIP/speakers), generate immediately
+    // For paid attendees, pass will be generated in confirmPayment()
+    let passUrl: string | undefined;
+
+    if (data.isComplimentary) {
+      passUrl = await this.generateApplePass({
+        registrationId: registration.id,
+        attendee: data.attendee,
+        event,
+      });
+    } else {
+      // Generate payment link (would integrate with ada.finance)
+      const paymentLink = `https://payment.ada-ecosystem.com/pay/${registration.id}`;
+
+      this.remember(
+        'data',
+        { registration, itinerary, paymentStatus, paymentLink },
+        ['registration', 'pending-payment'],
+        9
+      );
+
+      return {
+        success: true,
+        registration,
+        itinerary,
+        paymentLink,
+        paymentStatus,
+        message: '⚠️ Payment required before badge issuance. Please complete payment to receive your Apple Pass.',
+      };
+    }
 
     this.remember(
       'data',
-      { registration, itinerary, passUrl },
-      ['registration', 'attendee'],
+      { registration, itinerary, passUrl, paymentStatus },
+      ['registration', 'attendee', 'complimentary'],
       9
     );
 
@@ -282,6 +337,78 @@ export class CongressNode extends BaseNode {
       registration,
       itinerary,
       applePassUrl: passUrl,
+      paymentStatus,
+    };
+  }
+
+  /**
+   * Confirm payment and issue pass
+   * Called by payment webhook or manual confirmation
+   */
+  async confirmPayment(data: {
+    registrationId: string;
+    transactionId: string;
+    paidAmount: number;
+    paymentMethod: 'credit-card' | 'bank-transfer' | 'cash';
+  }): Promise<any> {
+    const registration = this.registrations.get(data.registrationId);
+
+    if (!registration) {
+      return { success: false, message: 'Registration not found' };
+    }
+
+    if (registration.paymentStatus === 'paid') {
+      return { success: false, message: 'Already paid' };
+    }
+
+    // Verify payment amount
+    if (data.paidAmount < registration.amount) {
+      return {
+        success: false,
+        message: `Insufficient payment. Required: ${registration.amount}, Received: ${data.paidAmount}`,
+      };
+    }
+
+    // Update payment status
+    registration.paymentStatus = 'paid';
+
+    const event = this.events.get(registration.eventId);
+    if (!event) {
+      return { success: false, message: 'Event not found' };
+    }
+
+    // NOW generate the Apple Pass
+    const passUrl = await this.generateApplePass({
+      registrationId: registration.id,
+      attendee: registration.attendee,
+      event,
+    });
+
+    this.remember(
+      'data',
+      {
+        registrationId: registration.id,
+        transactionId: data.transactionId,
+        paidAmount: data.paidAmount,
+        passUrl,
+      },
+      ['payment', 'confirmed', 'pass-issued'],
+      9
+    );
+
+    this.logEvent('Payment confirmed and pass issued', {
+      registrationId: registration.id,
+      attendee: registration.attendee.name,
+      amount: data.paidAmount,
+      transactionId: data.transactionId,
+    });
+
+    return {
+      success: true,
+      message: '✅ Payment confirmed! Your Apple Pass has been issued.',
+      registration,
+      applePassUrl: passUrl,
+      transactionId: data.transactionId,
     };
   }
 
@@ -627,68 +754,93 @@ export class CongressNode extends BaseNode {
     attendee: Attendee;
     event: CongressEvent;
   }): Promise<string> {
-    // In production, this would integrate with Apple PassKit API
-    // For now, generate a mock URL
-    const passId = uuidv4();
+    // Check if PassKit node is available
+    if (this.passkitNodes.length === 0) {
+      console.log('No PassKit node available, using fallback URL');
+      const passId = uuidv4();
+      const passUrl = `https://passes.ada-ecosystem.com/${passId}`;
 
-    const passData = {
-      passTypeIdentifier: 'pass.com.ada.congress',
-      serialNumber: passId,
-      organizationName: this.organizerInfo.name,
-      description: `${data.event.name} - Attendee Pass`,
-      logoText: data.event.name,
-      foregroundColor: 'rgb(255, 255, 255)',
-      backgroundColor: 'rgb(60, 65, 76)',
-      barcode: {
-        message: data.registrationId,
-        format: 'PKBarcodeFormatQR',
-        messageEncoding: 'iso-8859-1',
-      },
-      generic: {
-        primaryFields: [
-          {
-            key: 'name',
-            label: 'Name',
-            value: data.attendee.name,
-          },
-        ],
-        secondaryFields: [
-          {
-            key: 'event',
-            label: 'Event',
-            value: data.event.name,
-          },
-          {
-            key: 'date',
-            label: 'Date',
-            value: data.event.startDate.toLocaleDateString(),
-          },
-        ],
-        auxiliaryFields: [
-          {
-            key: 'venue',
-            label: 'Venue',
-            value: data.event.venue.name,
-          },
-        ],
-      },
-    };
+      // Store pass data in itinerary
+      const itinerary = Array.from(this.itineraries.values()).find(
+        i => i.attendeeId === data.attendee.id
+      );
 
-    // Simulated pass URL
-    const passUrl = `https://passes.ada-ecosystem.com/${passId}`;
+      if (itinerary) {
+        itinerary.applePassUrl = passUrl;
+      }
 
-    // Store pass data in itinerary
-    const itinerary = Array.from(this.itineraries.values()).find(
-      i => i.attendeeId === data.attendee.id
-    );
-
-    if (itinerary) {
-      itinerary.applePassUrl = passUrl;
+      this.remember('data', { passUrl }, ['apple-pass'], 7);
+      return passUrl;
     }
 
-    this.remember('data', { passData, passUrl }, ['apple-pass'], 7);
+    try {
+      // Create pass through PassKit node
+      const passResult = await this.communication.request(
+        this.passkitNodes[0],
+        'create-pass',
+        {
+          domain: 'ada.congress',
+          passType: 'CONGRESS_BADGE',
+          holder: {
+            name: data.attendee.name,
+            email: data.attendee.email,
+            role: 'Attendee',
+          },
+          validity: {
+            validFrom: data.event.startDate,
+            validTo: data.event.endDate,
+          },
+          zones: [
+            {
+              id: 'main-hall',
+              name: 'Main Conference Hall',
+            },
+            {
+              id: 'registration',
+              name: 'Registration Area',
+            },
+          ],
+          branding: {
+            organizationName: this.organizerInfo.name,
+            primaryColor: '#3C414C',
+            secondaryColor: '#FFFFFF',
+            textColor: '#FFFFFF',
+          },
+          metadata: {
+            registrationId: data.registrationId,
+            eventId: data.event.id,
+            eventName: data.event.name,
+            venueName: data.event.venue.name,
+          },
+          generateQR: true,
+          generateAppleWallet: true,
+          generatePDF: false,
+        }
+      );
 
-    return passUrl;
+      const passUrl = passResult.appleWalletUrl || `https://passes.ada-ecosystem.com/${passResult.passId}`;
+
+      // Store pass data in itinerary
+      const itinerary = Array.from(this.itineraries.values()).find(
+        i => i.attendeeId === data.attendee.id
+      );
+
+      if (itinerary) {
+        itinerary.applePassUrl = passUrl;
+      }
+
+      this.remember('data', { passResult, passUrl }, ['apple-pass'], 7);
+
+      console.log(`✅ Apple Pass created for ${data.attendee.name}: ${passUrl}`);
+      return passUrl;
+    } catch (error: any) {
+      console.error('Failed to create Apple Pass through PassKit node:', error.message);
+
+      // Fallback to simple URL
+      const passId = uuidv4();
+      const passUrl = `https://passes.ada-ecosystem.com/${passId}`;
+      return passUrl;
+    }
   }
 
   /**

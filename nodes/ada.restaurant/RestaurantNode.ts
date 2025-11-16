@@ -6,6 +6,7 @@
 
 import { BaseNode, BaseNodeOptions } from '../../core/BaseNode.js';
 import { v4 as uuidv4 } from 'uuid';
+import { PaymentStatus, PaymentPolicy } from '../../core/types.js';
 
 export interface RestaurantNodeConfig extends Omit<BaseNodeOptions, 'type' | 'capabilities'> {
   restaurantInfo: {
@@ -53,10 +54,12 @@ interface CateringOrder {
   guestCount: number;
   specialRequests: string[];
   dietaryRestrictions: string[];
-  status: 'pending' | 'confirmed' | 'preparing' | 'delivered' | 'completed' | 'cancelled';
+  status: 'pending' | 'pending-payment' | 'confirmed' | 'preparing' | 'delivered' | 'completed' | 'cancelled';
   totalCost: number;
   satisfaction?: number; // 1-5, AI learns from this
   feedback?: string;
+  isPrepaid?: boolean; // Gala dinners, special events
+  requiresDeposit?: boolean; // Large groups (10+)
 }
 
 interface ProvisioningRequest {
@@ -92,6 +95,9 @@ export class RestaurantNode extends BaseNode {
   private menus: Map<string, Menu> = new Map();
   private orders: Map<string, CateringOrder> = new Map();
   private provisioningRequests: Map<string, ProvisioningRequest> = new Map();
+
+  // Payment tracking
+  private paymentStatuses: Map<string, PaymentStatus> = new Map();
 
   // AI Learning Database
   private guestPreferences: Map<string, any> = new Map(); // Learns dietary preferences
@@ -157,6 +163,8 @@ export class RestaurantNode extends BaseNode {
     switch (type) {
       case 'create-catering-order':
         return this.createCateringOrder(data);
+      case 'confirm-catering-payment':
+        return this.confirmCateringPayment(data);
       case 'plan-yacht-provisioning':
         return this.planYachtProvisioning(data);
       case 'get-recommendations':
@@ -205,7 +213,8 @@ export class RestaurantNode extends BaseNode {
     budget?: number;
     deliveryDate: Date;
     deliveryLocation: string;
-  }): Promise<CateringOrder> {
+    isPrepaid?: boolean; // Gala dinners, special events
+  }): Promise<any> {
     // AI selects menu based on:
     // 1. Guest count
     // 2. Dietary restrictions
@@ -220,6 +229,11 @@ export class RestaurantNode extends BaseNode {
       data.budget
     );
 
+    // Determine payment policy
+    const isPrepaid = data.isPrepaid || false;
+    const requiresDeposit = data.guestCount >= 10;
+    const paymentPolicy: PaymentPolicy = isPrepaid ? 'prepaid' : (requiresDeposit ? 'mixed' : 'postpaid');
+
     const order: CateringOrder = {
       id: uuidv4(),
       customerId: data.customerId,
@@ -231,24 +245,182 @@ export class RestaurantNode extends BaseNode {
       guestCount: data.guestCount,
       specialRequests: [],
       dietaryRestrictions: data.dietaryRestrictions || [],
-      status: 'pending',
+      status: isPrepaid || requiresDeposit ? 'pending-payment' : 'pending',
       totalCost: menu.totalPrice,
+      isPrepaid,
+      requiresDeposit,
     };
 
+    // Create payment status
+    const depositAmount = requiresDeposit ? menu.totalPrice * 0.3 : 0; // 30% deposit for large groups
+    const paymentStatus: PaymentStatus = {
+      status: 'pending',
+      totalAmount: menu.totalPrice,
+      paidAmount: 0,
+      remainingAmount: menu.totalPrice,
+      currency: 'USD',
+      createdAt: new Date(),
+    };
+
+    if (requiresDeposit) {
+      paymentStatus.schedule = [
+        {
+          description: 'Deposit (30%)',
+          amount: depositAmount,
+          dueDate: new Date(), // Immediate
+          status: 'pending',
+        },
+        {
+          description: 'Balance (70%)',
+          amount: menu.totalPrice - depositAmount,
+          dueDate: data.deliveryDate,
+          status: 'pending',
+        },
+      ];
+    }
+
     this.orders.set(order.id, order);
+    this.paymentStatuses.set(order.id, paymentStatus);
 
     // Learn from this order
     this.learnFromOrder(order);
 
     this.remember('data', { order, aiOptimized: true }, ['catering', 'ai-learning'], 8);
 
-    // Create invoice via Finance node
-    this.createInvoiceForOrder(order)
-      .catch(error => {
-        console.error('Failed to create invoice for order:', error.message);
-      });
+    // Return different response based on payment policy
+    if (isPrepaid) {
+      const paymentLink = `https://payment.ada-ecosystem.com/pay/${order.id}`;
+      return {
+        success: true,
+        order,
+        paymentPolicy: 'prepaid',
+        paymentRequired: true,
+        paymentLink,
+        message: '⚠️ Full payment required before event confirmation.',
+      };
+    }
 
-    return order;
+    if (requiresDeposit) {
+      const depositPaymentLink = `https://payment.ada-ecosystem.com/pay/${order.id}/deposit`;
+      return {
+        success: true,
+        order,
+        paymentPolicy: 'mixed',
+        depositRequired: true,
+        depositAmount,
+        depositPaymentLink,
+        balanceDue: menu.totalPrice - depositAmount,
+        balanceDueDate: data.deliveryDate,
+        message: `⚠️ Deposit of $${depositAmount} required for groups of ${data.guestCount} people.`,
+      };
+    }
+
+    // POSTPAID - normal daily meals
+    return {
+      success: true,
+      order,
+      paymentPolicy: 'postpaid',
+      paymentDue: 'After service',
+      message: '✅ Order confirmed. Payment after service.',
+    };
+  }
+
+  /**
+   * Confirm payment for catering order
+   * For prepaid events and deposit payments
+   */
+  async confirmCateringPayment(data: {
+    orderId: string;
+    transactionId: string;
+    paidAmount: number;
+    paymentMethod: 'credit-card' | 'bank-transfer' | 'cash';
+    paymentType?: 'full' | 'deposit' | 'balance';
+  }): Promise<any> {
+    const order = this.orders.get(data.orderId);
+    if (!order) {
+      return { success: false, message: 'Order not found' };
+    }
+
+    const paymentStatus = this.paymentStatuses.get(data.orderId);
+    if (!paymentStatus) {
+      return { success: false, message: 'Payment status not found' };
+    }
+
+    const paymentType = data.paymentType || 'full';
+
+    // Handle deposit payment (for large groups)
+    if (paymentType === 'deposit' && order.requiresDeposit) {
+      const depositSchedule = paymentStatus.schedule?.[0];
+      if (!depositSchedule) {
+        return { success: false, message: 'Deposit schedule not found' };
+      }
+
+      if (data.paidAmount < depositSchedule.amount) {
+        return {
+          success: false,
+          message: `Insufficient deposit. Required: ${depositSchedule.amount}, Paid: ${data.paidAmount}`,
+        };
+      }
+
+      // Update deposit schedule
+      depositSchedule.status = 'paid';
+      depositSchedule.paidAt = new Date();
+
+      paymentStatus.paidAmount += data.paidAmount;
+      paymentStatus.remainingAmount -= data.paidAmount;
+      paymentStatus.status = 'partial';
+
+      order.status = 'confirmed';
+
+      return {
+        success: true,
+        message: '✅ Deposit received! Order confirmed.',
+        order,
+        depositPaid: data.paidAmount,
+        remainingBalance: paymentStatus.remainingAmount,
+        balanceDueDate: paymentStatus.schedule?.[1]?.dueDate,
+      };
+    }
+
+    // Handle full payment or balance payment
+    const requiredAmount = paymentType === 'balance'
+      ? paymentStatus.remainingAmount
+      : paymentStatus.totalAmount;
+
+    if (data.paidAmount < requiredAmount) {
+      return {
+        success: false,
+        message: `Insufficient payment. Required: ${requiredAmount}, Paid: ${data.paidAmount}`,
+      };
+    }
+
+    // Update payment status
+    paymentStatus.status = 'paid';
+    paymentStatus.paidAmount = paymentStatus.totalAmount;
+    paymentStatus.remainingAmount = 0;
+    paymentStatus.paidAt = new Date();
+    paymentStatus.transactionId = data.transactionId;
+    paymentStatus.paymentMethod = data.paymentMethod;
+
+    // Update balance schedule if exists
+    if (paymentStatus.schedule?.[1]) {
+      paymentStatus.schedule[1].status = 'paid';
+      paymentStatus.schedule[1].paidAt = new Date();
+    }
+
+    order.status = 'confirmed';
+
+    this.remember('data', {
+      order,
+      payment: paymentStatus,
+    }, ['catering', 'payment'], 8);
+
+    return {
+      success: true,
+      message: '✅ Payment confirmed! Order ready for preparation.',
+      order,
+      paymentStatus,
+    };
   }
 
   /**

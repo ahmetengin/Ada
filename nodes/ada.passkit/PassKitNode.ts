@@ -39,6 +39,7 @@ import {
   ScanLog,
   PassStatistics,
 } from './types/PassTypes.js';
+import { PassGenerator } from './services/PassGenerator.js';
 
 export interface PassKitNodeConfig extends Omit<BaseNodeOptions, 'type' | 'capabilities'> {
   organizationInfo: {
@@ -88,7 +89,7 @@ export class PassKitNode extends BaseNode {
   constructor(config: PassKitNodeConfig) {
     super({
       ...config,
-      type: 'ada.passkit' as any, // Will need to add to NodeType enum
+      type: 'ada.passkit',
       capabilities: {
         skills: [
           'pass-generation',
@@ -576,44 +577,76 @@ export class PassKitNode extends BaseNode {
    * Generate QR code from payload
    */
   private async generateQRCode(payload: QRPayload): Promise<string> {
-    // TODO: Implement actual QR generation (using qrcode library)
-    // For now, return base64 placeholder
-    const data = JSON.stringify(payload);
-    return `data:image/svg+xml;base64,${Buffer.from(data).toString('base64')}`;
+    return PassGenerator.generateQRCode(payload, {
+      format: 'dataurl',
+      size: 256,
+      errorCorrection: 'H',
+    });
   }
 
   /**
    * Sign QR payload
    */
   private async signPayload(payload: QRPayload, signingKey: string): Promise<string> {
-    // TODO: Implement HMAC-SHA256 signing
-    const data = JSON.stringify({ ...payload, signature: undefined });
-    return Buffer.from(data + signingKey).toString('base64').slice(0, 32);
+    return PassGenerator.signPayload(payload, signingKey);
   }
 
   /**
    * Generate Apple Wallet pass
    */
   private async generateAppleWalletPass(pass: Pass): Promise<string> {
-    // TODO: Implement Apple PassKit generation
-    // Would use passkit-generator or similar library
-    return `https://passes.ada-ecosystem.com/apple/${pass.passId}.pkpass`;
+    if (!this.walletIntegration?.appleWallet) {
+      return `https://passes.ada-ecosystem.com/apple/${pass.passId}.pkpass`;
+    }
+
+    try {
+      const { passUrl } = await PassGenerator.generateAppleWalletPass(pass, {
+        teamId: this.walletIntegration.appleWallet.teamId,
+        passTypeId: this.walletIntegration.appleWallet.passTypeId,
+        organizationName: this.organizationInfo.name,
+        certificatePath: this.walletIntegration.appleWallet.certificatePath,
+      });
+
+      return passUrl;
+    } catch (error) {
+      console.error('Apple Wallet pass generation failed:', error);
+      return `https://passes.ada-ecosystem.com/apple/${pass.passId}.pkpass`;
+    }
   }
 
   /**
    * Generate Google Wallet pass
    */
   private async generateGoogleWalletPass(pass: Pass): Promise<string> {
-    // TODO: Implement Google Wallet pass generation
-    return `https://passes.ada-ecosystem.com/google/${pass.passId}`;
+    if (!this.walletIntegration?.googleWallet) {
+      return `https://passes.ada-ecosystem.com/google/${pass.passId}`;
+    }
+
+    try {
+      const { passUrl } = await PassGenerator.generateGoogleWalletPass(pass, {
+        issuerId: this.walletIntegration.googleWallet.issuerId,
+        classId: 'ada-universal-pass',
+        serviceAccountKeyPath: this.walletIntegration.googleWallet.serviceAccountPath,
+      });
+
+      return passUrl;
+    } catch (error) {
+      console.error('Google Wallet pass generation failed:', error);
+      return `https://passes.ada-ecosystem.com/google/${pass.passId}`;
+    }
   }
 
   /**
    * Generate PDF pass
    */
   private async generatePDFPass(pass: Pass): Promise<string> {
-    // TODO: Implement PDF generation with QR code
-    return `https://passes.ada-ecosystem.com/pdf/${pass.passId}.pdf`;
+    try {
+      const { pdfUrl } = await PassGenerator.generatePDFPass(pass);
+      return pdfUrl;
+    } catch (error) {
+      console.error('PDF pass generation failed:', error);
+      return `https://passes.ada-ecosystem.com/pdf/${pass.passId}.pdf`;
+    }
   }
 
   /**

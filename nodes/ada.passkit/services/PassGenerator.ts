@@ -10,6 +10,9 @@
 
 import { createHash, createHmac } from 'crypto';
 import { Pass, QRPayload } from '../types/PassTypes.js';
+import QRCode from 'qrcode';
+import PDFDocument from 'pdfkit';
+import { PassKit } from 'passkit-generator';
 
 export interface QRCodeOptions {
   format: 'svg' | 'png' | 'dataurl';
@@ -48,21 +51,43 @@ export class PassGenerator {
   ): Promise<string> {
     const qrData = JSON.stringify(payload);
 
-    // TODO: Implement actual QR generation using 'qrcode' library
-    // For now, return a placeholder based on format
+    const qrOptions = {
+      errorCorrectionLevel: options.errorCorrection || 'H',
+      margin: options.margin || 1,
+      width: options.size || 256,
+      color: options.color || {
+        dark: '#000000',
+        light: '#FFFFFF',
+      },
+    };
 
-    if (options.format === 'svg') {
+    try {
+      if (options.format === 'svg') {
+        // Generate SVG format
+        return await QRCode.toString(qrData, {
+          ...qrOptions,
+          type: 'svg',
+        });
+      }
+
+      if (options.format === 'png') {
+        // Generate PNG as Buffer
+        const buffer = await QRCode.toBuffer(qrData, qrOptions);
+        return `data:image/png;base64,${buffer.toString('base64')}`;
+      }
+
+      if (options.format === 'dataurl') {
+        // Generate data URL
+        return await QRCode.toDataURL(qrData, qrOptions);
+      }
+
+      // Default to data URL
+      return await QRCode.toDataURL(qrData, qrOptions);
+    } catch (error) {
+      console.error('QR code generation failed:', error);
+      // Fallback to placeholder
       return this.generatePlaceholderSVG(qrData, options.size || 256);
     }
-
-    if (options.format === 'dataurl') {
-      // Base64 encoded data URL
-      const svg = this.generatePlaceholderSVG(qrData, options.size || 256);
-      return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
-    }
-
-    // PNG format
-    return `data:image/png;base64,${Buffer.from(qrData).toString('base64')}`;
   }
 
   /**
@@ -72,60 +97,73 @@ export class PassGenerator {
     pass: Pass,
     config: AppleWalletConfig
   ): Promise<{ passUrl: string; passData: Buffer }> {
-    // TODO: Implement Apple PassKit generation
-    // Would use passkit-generator library:
-    // 1. Create pass.json manifest
-    // 2. Add logo, icon, strip images
-    // 3. Generate manifest.json (SHA1 hashes)
-    // 4. Sign with PKCS7 certificate
-    // 5. ZIP into .pkpass file
+    try {
+      // Create PassKit instance
+      const passKit = new PassKit({
+        model: './passModels/generic', // Path to pass template
+        certificates: {
+          wwdr: config.wwdrCertPath || process.env.PASSKIT_WWDR_CERT,
+          signerCert: config.certificatePath || process.env.PASSKIT_CERT,
+          signerKey: config.privateKeyPath || process.env.PASSKIT_KEY,
+        },
+      });
 
-    const passJson = {
-      formatVersion: 1,
-      passTypeIdentifier: config.passTypeId,
-      serialNumber: pass.passId,
-      teamIdentifier: config.teamId,
-      organizationName: config.organizationName || pass.branding.organizationName,
-      description: `${pass.domain} - ${pass.passType}`,
+      // Set pass data
+      passKit.type = 'generic';
+      passKit.serialNumber = pass.passId;
+      passKit.passTypeIdentifier = config.passTypeId;
+      passKit.teamIdentifier = config.teamId;
+      passKit.organizationName = config.organizationName || pass.branding.organizationName;
+      passKit.description = `${pass.domain} - ${pass.passType}`;
 
       // Visual styling
-      backgroundColor: this.rgbToHex(pass.branding.backgroundColor || 'rgb(60, 65, 76)'),
-      foregroundColor: this.rgbToHex(pass.branding.textColor || 'rgb(255, 255, 255)'),
-      labelColor: this.rgbToHex(pass.branding.secondaryColor || 'rgb(255, 255, 255)'),
-      logoText: pass.branding.organizationName,
+      passKit.backgroundColor = this.rgbToHex(pass.branding.backgroundColor || 'rgb(60, 65, 76)');
+      passKit.foregroundColor = this.rgbToHex(pass.branding.textColor || 'rgb(255, 255, 255)');
+      passKit.labelColor = this.rgbToHex(pass.branding.secondaryColor || 'rgb(255, 255, 255)');
+      passKit.logoText = pass.branding.organizationName;
 
       // Barcode (QR code)
-      barcodes: [
-        {
-          message: JSON.stringify(pass.qrPayload),
-          format: 'PKBarcodeFormatQR',
-          messageEncoding: 'iso-8859-1',
-          altText: pass.passId,
-        },
-      ],
+      passKit.setBarcodes({
+        message: JSON.stringify(pass.qrPayload),
+        format: 'PKBarcodeFormatQR',
+        messageEncoding: 'iso-8859-1',
+        altText: pass.passId,
+      });
 
-      // Pass fields based on type
-      ...this.generatePassFields(pass),
+      // Pass fields
+      const fields = this.generatePassFields(pass);
+      passKit.headerFields = fields.generic.headerFields;
+      passKit.primaryFields = fields.generic.primaryFields;
+      passKit.secondaryFields = fields.generic.secondaryFields;
+      passKit.auxiliaryFields = fields.generic.auxiliaryFields;
+      passKit.backFields = fields.generic.backFields;
 
       // Validity
-      relevantDate: pass.validity.validFrom.toISOString(),
-      expirationDate: pass.validity.validTo.toISOString(),
+      passKit.relevantDate = pass.validity.validFrom.toISOString();
+      passKit.expirationDate = pass.validity.validTo.toISOString();
 
-      // Locations (if zones have coordinates)
-      locations: pass.zones
-        .filter(z => z.restrictions)
-        .map(z => ({
-          latitude: 0, // TODO: Extract from zone metadata
-          longitude: 0,
-          relevantText: z.name,
-        })),
-    };
+      // Generate the .pkpass file
+      const passData = passKit.getAsBuffer();
 
-    // Placeholder return
-    const passUrl = `https://passes.ada-ecosystem.com/apple/${pass.passId}.pkpass`;
-    const passData = Buffer.from(JSON.stringify(passJson));
+      const passUrl = `https://passes.ada-ecosystem.com/apple/${pass.passId}.pkpass`;
 
-    return { passUrl, passData };
+      return { passUrl, passData };
+    } catch (error) {
+      console.error('Apple Wallet pass generation failed:', error);
+
+      // Fallback: Return a minimal pass structure
+      const passUrl = `https://passes.ada-ecosystem.com/apple/${pass.passId}.pkpass`;
+      const passData = Buffer.from(JSON.stringify({
+        formatVersion: 1,
+        passTypeIdentifier: config.passTypeId,
+        serialNumber: pass.passId,
+        teamIdentifier: config.teamId,
+        organizationName: config.organizationName,
+        description: `${pass.domain} - ${pass.passType}`,
+      }));
+
+      return { passUrl, passData };
+    }
   }
 
   /**
@@ -194,17 +232,139 @@ export class PassGenerator {
    * Generate PDF pass
    */
   static async generatePDFPass(pass: Pass): Promise<{ pdfUrl: string; pdfData: Buffer }> {
-    // TODO: Implement PDF generation using pdf-lib or pdfkit
-    // 1. Create PDF with pass details
-    // 2. Embed QR code image
-    // 3. Add branding (logo, colors)
-    // 4. Add holder information
-    // 5. Add validity and zone information
+    return new Promise(async (resolve, reject) => {
+      try {
+        // Create PDF document
+        const doc = new PDFDocument({
+          size: 'LETTER',
+          margins: {
+            top: 50,
+            bottom: 50,
+            left: 50,
+            right: 50,
+          },
+        });
 
-    const pdfUrl = `https://passes.ada-ecosystem.com/pdf/${pass.passId}.pdf`;
-    const pdfData = Buffer.from('PDF placeholder');
+        const chunks: Buffer[] = [];
 
-    return { pdfUrl, pdfData };
+        doc.on('data', (chunk) => chunks.push(chunk));
+        doc.on('end', () => {
+          const pdfData = Buffer.concat(chunks);
+          const pdfUrl = `https://passes.ada-ecosystem.com/pdf/${pass.passId}.pdf`;
+          resolve({ pdfUrl, pdfData });
+        });
+
+        // Header
+        doc.fontSize(24)
+           .fillColor(pass.branding.primaryColor || '#3C414C')
+           .text(pass.branding.organizationName || 'Ada Ecosystem', { align: 'center' });
+
+        doc.moveDown(0.5);
+
+        // Pass type
+        doc.fontSize(18)
+           .fillColor('#000000')
+           .text(pass.passType.replace(/_/g, ' '), { align: 'center' });
+
+        doc.moveDown(1);
+
+        // Horizontal line
+        doc.moveTo(50, doc.y)
+           .lineTo(562, doc.y)
+           .stroke();
+
+        doc.moveDown(1);
+
+        // Holder information
+        doc.fontSize(12)
+           .fillColor('#000000')
+           .text(`Holder: ${pass.holder.name}`, { align: 'left' });
+
+        if (pass.holder.email) {
+          doc.text(`Email: ${pass.holder.email}`, { align: 'left' });
+        }
+
+        if (pass.holder.role) {
+          doc.text(`Role: ${pass.holder.role}`, { align: 'left' });
+        }
+
+        doc.moveDown(1);
+
+        // Validity information
+        doc.fontSize(10)
+           .fillColor('#666666')
+           .text(`Valid From: ${pass.validity.validFrom.toLocaleDateString('en-US', {
+             year: 'numeric',
+             month: 'long',
+             day: 'numeric',
+             hour: '2-digit',
+             minute: '2-digit'
+           })}`, { align: 'left' });
+
+        doc.text(`Valid Until: ${pass.validity.validTo.toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        })}`, { align: 'left' });
+
+        doc.moveDown(1);
+
+        // Authorized zones
+        if (pass.zones.length > 0) {
+          doc.fontSize(12)
+             .fillColor('#000000')
+             .text('Authorized Zones:', { align: 'left' });
+
+          doc.fontSize(10)
+             .fillColor('#666666');
+
+          pass.zones.forEach((zone, idx) => {
+            doc.text(`  ${idx + 1}. ${zone.name}`, { align: 'left' });
+          });
+
+          doc.moveDown(1);
+        }
+
+        // Generate QR code
+        const qrCodeDataUrl = await this.generateQRCode(pass.qrPayload, {
+          format: 'dataurl',
+          size: 200,
+        });
+
+        // Remove data URL prefix to get base64
+        const qrBase64 = qrCodeDataUrl.replace(/^data:image\/\w+;base64,/, '');
+        const qrBuffer = Buffer.from(qrBase64, 'base64');
+
+        // Add QR code to PDF
+        doc.image(qrBuffer, {
+          fit: [200, 200],
+          align: 'center',
+          valign: 'center',
+        });
+
+        doc.moveDown(1);
+
+        // Pass ID
+        doc.fontSize(8)
+           .fillColor('#999999')
+           .text(`Pass ID: ${pass.passId}`, { align: 'center' });
+
+        doc.text(`Domain: ${pass.domain}`, { align: 'center' });
+
+        // Footer
+        doc.fontSize(8)
+           .fillColor('#CCCCCC')
+           .text('Powered by Ada Ecosystem', 50, 750, { align: 'center' });
+
+        // Finalize PDF
+        doc.end();
+      } catch (error) {
+        console.error('PDF generation failed:', error);
+        reject(error);
+      }
+    });
   }
 
   /**
