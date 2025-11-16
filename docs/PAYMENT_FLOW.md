@@ -374,12 +374,12 @@ await travelNode.request('issue-ticket', { pnr });
 - [x] Payment confirmation method added
 - [x] Complimentary guest handling
 - [x] TravelNode payment flow (flights PREPAID, hotels POSTPAID)
-- [ ] RestaurantNode payment flow (prepaid events)
-- [ ] MarinaNode payment schedule (deposit + monthly)
-- [ ] FinanceNode implementation
-- [ ] Payment gateway integration (PayTR, Stripe)
-- [ ] Webhook endpoint
-- [ ] e-Invoice GIB integration
+- [x] RestaurantNode payment flow (prepaid events + deposit for large groups)
+- [ ] MarinaNode payment schedule (deposit + monthly) - Low priority
+- [ ] FinanceNode implementation - Future
+- [ ] Payment gateway integration (PayTR, Stripe) - Future
+- [ ] Webhook endpoint - Future
+- [ ] e-Invoice GIB integration - Future
 
 ---
 
