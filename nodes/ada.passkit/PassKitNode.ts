@@ -89,7 +89,7 @@ export class PassKitNode extends BaseNode {
   constructor(config: PassKitNodeConfig) {
     super({
       ...config,
-      type: 'ada.passkit' as any, // Will need to add to NodeType enum
+      type: 'ada.passkit',
       capabilities: {
         skills: [
           'pass-generation',
