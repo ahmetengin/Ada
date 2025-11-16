@@ -1,6 +1,7 @@
 """Tenant management API endpoints."""
 
 import uuid
+from datetime import datetime, timezone
 from typing import List
 
 from fastapi import APIRouter, HTTPException, status
@@ -49,7 +50,7 @@ async def create_tenant(tenant_data: TenantCreate) -> TenantResponse:
         name=tenant_data.name,
         description=tenant_data.description,
         organization=tenant_data.organization,
-        created_at=str(uuid.uuid1().time),
+        created_at=datetime.now(timezone.utc).isoformat(),
         active=True,
     )
 

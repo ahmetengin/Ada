@@ -1,6 +1,7 @@
 """Fleet management API endpoints."""
 
 import uuid
+from datetime import datetime, timezone
 from typing import List
 
 from fastapi import APIRouter, HTTPException, status
@@ -54,7 +55,7 @@ async def create_fleet(fleet_data: FleetCreate) -> FleetResponse:
         tenant_id=fleet_data.tenant_id,
         vessel_type=fleet_data.vessel_type,
         vessel_count=0,
-        created_at=str(uuid.uuid1().time),
+        created_at=datetime.now(timezone.utc).isoformat(),
         active=True,
     )
 

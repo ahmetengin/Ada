@@ -114,6 +114,7 @@ class FAISSIndexManager:
         name: str,
         dimension: int,
         index_type: str = "Flat",
+        training_vectors: Optional[np.ndarray] = None,
     ) -> faiss.Index:
         """
         Create a new FAISS index.
@@ -122,6 +123,7 @@ class FAISSIndexManager:
             name: Index name
             dimension: Vector dimension
             index_type: Type of index ('Flat', 'IVF', 'HNSW')
+            training_vectors: Training vectors for IVF index (required for IVF)
 
         Returns:
             FAISS index
@@ -131,6 +133,15 @@ class FAISSIndexManager:
         elif index_type == "IVF":
             quantizer = faiss.IndexFlatL2(dimension)
             index = faiss.IndexIVFFlat(quantizer, dimension, 100)
+
+            # IVF index must be trained before use
+            if training_vectors is None:
+                raise ValueError("IVF index requires training_vectors parameter")
+            if training_vectors.shape[1] != dimension:
+                raise ValueError(f"Training vectors dimension {training_vectors.shape[1]} != {dimension}")
+
+            # Train the index
+            index.train(training_vectors)
         elif index_type == "HNSW":
             index = faiss.IndexHNSWFlat(dimension, 32)
         else:
