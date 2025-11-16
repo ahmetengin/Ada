@@ -10,6 +10,8 @@ import {
   FlightBooking,
   HotelReservation,
   TourPackage,
+  PaymentStatus,
+  PaymentPolicy,
 } from '../../core/types.js';
 
 export interface TravelNodeConfig extends Omit<BaseNodeOptions, 'type' | 'capabilities'> {
@@ -93,6 +95,12 @@ export class TravelNode extends BaseNode {
   private hotelReservations: Map<string, HotelReservation> = new Map();
   private tourPackages: Map<string, TourPackage> = new Map();
 
+  // Payment tracking
+  private paymentStatuses: Map<string, PaymentStatus> = new Map();
+
+  // PassKit integration
+  private passkitNodes: string[] = [];
+
   // NEW: Visa assistance
   private visaApplications: Map<string, VisaApplication> = new Map();
   private visaRequirements: Map<string, VisaRequirement> = new Map();
@@ -161,7 +169,22 @@ export class TravelNode extends BaseNode {
   async initialize(): Promise<void> {
     this.logEvent('Travel node initializing', { agency: this.agencyInfo });
     this.setupTravelHandlers();
+    this.connectToPassKit();
     this.logEvent('Travel node initialized', { id: this.identity.id });
+  }
+
+  /**
+   * Connect to PassKit nodes for boarding pass generation
+   */
+  private connectToPassKit(): void {
+    const passkitNodes = BaseNode.findNodesByType('ada.passkit');
+    this.passkitNodes = passkitNodes.map(node => node.identity.id);
+
+    if (this.passkitNodes.length > 0) {
+      this.logEvent('Connected to PassKit nodes', { count: this.passkitNodes.length });
+    } else {
+      this.logEvent('No PassKit nodes found - boarding passes will not be generated');
+    }
   }
 
   /**
@@ -173,8 +196,14 @@ export class TravelNode extends BaseNode {
     switch (type) {
       case 'book-flight':
         return this.bookFlight(data);
+      case 'confirm-flight-payment':
+        return this.confirmFlightPayment(data);
+      case 'check-in-flight':
+        return this.checkInFlight(data);
       case 'reserve-hotel':
         return this.reserveHotel(data);
+      case 'checkout-hotel':
+        return this.checkoutHotel(data);
       case 'book-tour':
         return this.bookTour(data);
       case 'create-package':
@@ -229,7 +258,8 @@ export class TravelNode extends BaseNode {
   }
 
   /**
-   * Book flight
+   * Book flight - Creates PNR with time-limited hold
+   * ⚠️ CRITICAL: Payment required before ticketing!
    */
   async bookFlight(data: {
     customerId: string;
@@ -237,44 +267,322 @@ export class TravelNode extends BaseNode {
     arrival: { airport: string; date: Date };
     passengers: any[];
     class: 'economy' | 'business' | 'first';
+    airline?: string;
   }): Promise<any> {
+    const airline = data.airline || 'TK';
+    const price = this.calculateFlightPrice(data.class, data.passengers.length);
+
+    // Calculate PNR expiry based on airline and class
+    const expiryMinutes = this.calculatePNRExpiryTime(airline, data.class);
+    const expiresAt = new Date();
+    expiresAt.setMinutes(expiresAt.getMinutes() + expiryMinutes);
+
     const flightBooking: FlightBooking = {
       pnr: this.generatePNR(),
-      airline: 'TK', // Turkish Airlines
-      flightNumber: `TK${Math.floor(Math.random() * 9000) + 1000}`,
+      airline: airline,
+      flightNumber: `${airline}${Math.floor(Math.random() * 9000) + 1000}`,
       departure: data.departure,
       arrival: data.arrival,
       passengers: data.passengers,
       class: data.class,
-      price: this.calculateFlightPrice(data.class, data.passengers.length),
+      price: price,
+    };
+
+    // Create payment status - PENDING!
+    const paymentStatus: PaymentStatus = {
+      status: 'pending',
+      totalAmount: price,
+      paidAmount: 0,
+      remainingAmount: price,
+      currency: 'USD',
+      createdAt: new Date(),
+      expiresAt: expiresAt,
     };
 
     const booking: TravelBooking = {
       id: uuidv4(),
       customerId: data.customerId,
       type: 'flight',
-      status: 'confirmed',
+      status: 'pending-payment', // ⚠️ NOT CONFIRMED!
       details: flightBooking,
-      totalPrice: flightBooking.price,
+      totalPrice: price,
       currency: 'USD',
       createdAt: new Date(),
     };
 
     this.bookings.set(booking.id, booking);
     this.flightBookings.set(flightBooking.pnr, flightBooking);
+    this.paymentStatuses.set(booking.id, paymentStatus);
 
     this.remember('data', { booking, flight: flightBooking }, ['flight', 'booking'], 8);
 
+    // Generate payment link
+    const paymentLink = `https://payment.ada-ecosystem.com/pay/${booking.id}`;
+
     return {
       success: true,
-      booking,
+      bookingId: booking.id,
       pnr: flightBooking.pnr,
       flightNumber: flightBooking.flightNumber,
+      price: price,
+      currency: 'USD',
+      paymentStatus: 'pending',
+      paymentLink: paymentLink,
+      expiresAt: expiresAt,
+      expiresIn: `${expiryMinutes} minutes`,
+      message: `⚠️ PNR created. Payment required within ${expiryMinutes} minutes. No ticket issued yet.`,
     };
   }
 
   /**
-   * Reserve hotel
+   * Confirm flight payment and issue ticket
+   * ⚠️ CRITICAL: Only call after payment verification!
+   * ⚠️ Boarding pass NOT issued here - only after check-in (24h before flight)
+   */
+  async confirmFlightPayment(data: {
+    bookingId?: string;
+    pnr?: string;
+    transactionId: string;
+    paidAmount: number;
+    paymentMethod: 'credit-card' | 'bank-transfer' | 'cash';
+  }): Promise<any> {
+    // Find booking by ID or PNR
+    let booking: TravelBooking | undefined;
+    let bookingId: string | undefined;
+
+    if (data.bookingId) {
+      booking = this.bookings.get(data.bookingId);
+      bookingId = data.bookingId;
+    } else if (data.pnr) {
+      // Find booking by PNR
+      for (const [id, b] of this.bookings.entries()) {
+        if (b.type === 'flight' && (b.details as FlightBooking).pnr === data.pnr) {
+          booking = b;
+          bookingId = id;
+          break;
+        }
+      }
+    }
+
+    if (!booking || !bookingId) {
+      return { success: false, message: 'Booking not found' };
+    }
+
+    const paymentStatus = this.paymentStatuses.get(bookingId);
+    if (!paymentStatus) {
+      return { success: false, message: 'Payment status not found' };
+    }
+
+    // Check if already paid
+    if (paymentStatus.status === 'paid') {
+      return { success: false, message: 'Payment already processed' };
+    }
+
+    // Check if expired
+    if (paymentStatus.expiresAt && new Date() > paymentStatus.expiresAt) {
+      booking.status = 'cancelled';
+      paymentStatus.status = 'cancelled';
+      return {
+        success: false,
+        message: 'PNR expired. Please create a new booking.',
+      };
+    }
+
+    // Verify payment amount
+    if (data.paidAmount < paymentStatus.totalAmount) {
+      return {
+        success: false,
+        message: `Insufficient payment. Required: ${paymentStatus.totalAmount}, Paid: ${data.paidAmount}`,
+      };
+    }
+
+    // Update payment status
+    paymentStatus.status = 'paid';
+    paymentStatus.paidAmount = data.paidAmount;
+    paymentStatus.remainingAmount = 0;
+    paymentStatus.paidAt = new Date();
+    paymentStatus.transactionId = data.transactionId;
+    paymentStatus.paymentMethod = data.paymentMethod;
+
+    // Update booking status to 'confirmed' (ticket issued)
+    booking.status = 'confirmed';
+
+    const flightBooking = booking.details as FlightBooking;
+
+    // Calculate when check-in opens (24 hours before departure)
+    const checkInOpensAt = new Date(flightBooking.departure.date);
+    checkInOpensAt.setHours(checkInOpensAt.getHours() - 24);
+
+    this.remember('data', {
+      booking,
+      payment: paymentStatus,
+      ticketIssued: true,
+    }, ['flight', 'payment', 'ticket'], 8);
+
+    return {
+      success: true,
+      message: '✅ Payment confirmed! Ticket issued.',
+      booking: booking,
+      pnr: flightBooking.pnr,
+      flightNumber: flightBooking.flightNumber,
+      ticketIssued: true,
+      ticketNumber: `${flightBooking.airline}-${flightBooking.pnr}`,
+      checkInOpensAt: checkInOpensAt,
+      checkInAvailable: new Date() >= checkInOpensAt,
+      note: 'Online check-in opens 24 hours before departure. Boarding pass will be available after check-in.',
+      paymentStatus: paymentStatus,
+    };
+  }
+
+  /**
+   * Online check-in - Generates boarding pass via PassKit
+   * ⚠️ Only available 24 hours before flight departure
+   */
+  async checkInFlight(data: {
+    pnr: string;
+    passenger: {
+      name: string;
+      email?: string;
+    };
+    seatPreference?: string;
+  }): Promise<any> {
+    // Find booking by PNR
+    let booking: TravelBooking | undefined;
+    let bookingId: string | undefined;
+
+    for (const [id, b] of this.bookings.entries()) {
+      if (b.type === 'flight' && (b.details as FlightBooking).pnr === data.pnr) {
+        booking = b;
+        bookingId = id;
+        break;
+      }
+    }
+
+    if (!booking || !bookingId) {
+      return { success: false, message: 'Booking not found' };
+    }
+
+    // Check if ticket is issued (payment confirmed)
+    if (booking.status !== 'confirmed') {
+      return {
+        success: false,
+        message: 'Ticket not issued. Please complete payment first.',
+      };
+    }
+
+    const flightBooking = booking.details as FlightBooking;
+
+    // Check if check-in window is open (24 hours before departure)
+    const checkInOpensAt = new Date(flightBooking.departure.date);
+    checkInOpensAt.setHours(checkInOpensAt.getHours() - 24);
+
+    if (new Date() < checkInOpensAt) {
+      const hoursUntilCheckIn = Math.ceil(
+        (checkInOpensAt.getTime() - new Date().getTime()) / (1000 * 60 * 60)
+      );
+
+      return {
+        success: false,
+        message: `Check-in opens 24 hours before departure. Please try again in ${hoursUntilCheckIn} hours.`,
+        checkInOpensAt: checkInOpensAt,
+      };
+    }
+
+    // Assign seat (simulated)
+    const seat = data.seatPreference || this.assignRandomSeat(flightBooking.class);
+
+    // Generate boarding pass via PassKit
+    let boardingPassUrl: string | undefined;
+
+    try {
+      if (this.passkitNodes.length > 0) {
+        const passkitNode = BaseNode.findNodesByType('ada.passkit')[0];
+
+        if (passkitNode) {
+          const passResult = await passkitNode.request('create-pass', {
+            domain: 'ada.travel',
+            passType: 'BOARDING_PASS',
+            holder: {
+              name: data.passenger.name,
+              email: data.passenger.email,
+            },
+            validity: {
+              validFrom: flightBooking.departure.date,
+              validTo: flightBooking.arrival.date,
+            },
+            metadata: {
+              pnr: flightBooking.pnr,
+              flightNumber: flightBooking.flightNumber,
+              airline: flightBooking.airline,
+              departure: flightBooking.departure,
+              arrival: flightBooking.arrival,
+              class: flightBooking.class,
+              seat: seat,
+              bookingId: bookingId,
+              gate: `${Math.floor(Math.random() * 50) + 1}`, // Simulated
+              boardingTime: new Date(
+                new Date(flightBooking.departure.date).getTime() - 30 * 60 * 1000
+              ), // 30 min before departure
+            },
+            branding: {
+              primaryColor: '#E30A17', // Turkish Airlines red
+              secondaryColor: '#FFFFFF',
+              backgroundColor: 'rgb(227, 10, 23)',
+              textColor: 'rgb(255, 255, 255)',
+              organizationName: flightBooking.airline === 'TK' ? 'Turkish Airlines' : flightBooking.airline,
+            },
+          });
+
+          boardingPassUrl = passResult.applePassUrl;
+        }
+      }
+    } catch (error) {
+      console.error('Failed to generate boarding pass:', error);
+      return {
+        success: false,
+        message: 'Check-in successful but boarding pass generation failed. Please try again.',
+      };
+    }
+
+    this.remember('data', {
+      booking,
+      checkIn: true,
+      seat: seat,
+      boardingPass: boardingPassUrl,
+    }, ['flight', 'check-in', 'boarding-pass'], 8);
+
+    return {
+      success: true,
+      message: '✅ Check-in complete! Boarding pass issued.',
+      pnr: flightBooking.pnr,
+      flightNumber: flightBooking.flightNumber,
+      seat: seat,
+      boardingPassUrl: boardingPassUrl,
+      departure: flightBooking.departure,
+      arrival: flightBooking.arrival,
+      checkInCompleted: true,
+    };
+  }
+
+  /**
+   * Assign random seat based on class
+   */
+  private assignRandomSeat(flightClass: string): string {
+    if (flightClass === 'business' || flightClass === 'first') {
+      const row = Math.floor(Math.random() * 5) + 1; // Rows 1-5
+      const seat = ['A', 'D', 'F', 'K'][Math.floor(Math.random() * 4)];
+      return `${row}${seat}`;
+    }
+
+    // Economy
+    const row = Math.floor(Math.random() * 25) + 10; // Rows 10-34
+    const seat = ['A', 'B', 'C', 'D', 'E', 'F'][Math.floor(Math.random() * 6)];
+    return `${row}${seat}`;
+  }
+
+  /**
+   * Reserve hotel - POSTPAID policy
+   * Payment collected at checkout
    */
   async reserveHotel(data: {
     customerId: string;
@@ -283,10 +591,13 @@ export class TravelNode extends BaseNode {
     checkIn: Date;
     checkOut: Date;
     rooms: Array<{ type: string; guests: string[] }>;
+    requiresDeposit?: boolean; // For some hotels
   }): Promise<any> {
     const nights = Math.ceil(
       (data.checkOut.getTime() - data.checkIn.getTime()) / (1000 * 60 * 60 * 24)
     );
+
+    const totalPrice = nights * data.rooms.length * 150; // $150 per room per night
 
     const hotelReservation: HotelReservation = {
       confirmationNumber: this.generateConfirmationNumber(),
@@ -299,22 +610,36 @@ export class TravelNode extends BaseNode {
         count: 1,
         guests: room.guests,
       })),
-      price: nights * data.rooms.length * 150, // $150 per room per night
+      price: totalPrice,
+    };
+
+    // Payment policy: POSTPAID (payment at checkout)
+    const paymentPolicy: PaymentPolicy = 'postpaid';
+
+    // Create payment status - pending until checkout
+    const paymentStatus: PaymentStatus = {
+      status: 'pending',
+      totalAmount: totalPrice,
+      paidAmount: 0,
+      remainingAmount: totalPrice,
+      currency: 'USD',
+      createdAt: new Date(),
     };
 
     const booking: TravelBooking = {
       id: uuidv4(),
       customerId: data.customerId,
       type: 'hotel',
-      status: 'confirmed',
+      status: 'confirmed', // ✅ CONFIRMED - POSTPAID policy allows this
       details: hotelReservation,
-      totalPrice: hotelReservation.price,
+      totalPrice: totalPrice,
       currency: 'USD',
       createdAt: new Date(),
     };
 
     this.bookings.set(booking.id, booking);
     this.hotelReservations.set(hotelReservation.confirmationNumber, hotelReservation);
+    this.paymentStatuses.set(booking.id, paymentStatus);
 
     this.remember('data', { booking, hotel: hotelReservation }, ['hotel', 'booking'], 8);
 
@@ -322,6 +647,84 @@ export class TravelNode extends BaseNode {
       success: true,
       booking,
       confirmationNumber: hotelReservation.confirmationNumber,
+      paymentPolicy: paymentPolicy,
+      paymentDue: 'At checkout',
+      message: '✅ Hotel reservation confirmed. Payment will be collected at checkout.',
+    };
+  }
+
+  /**
+   * Checkout hotel and collect payment
+   */
+  async checkoutHotel(data: {
+    confirmationNumber: string;
+    transactionId: string;
+    paidAmount: number;
+    paymentMethod: 'credit-card' | 'bank-transfer' | 'cash';
+  }): Promise<any> {
+    // Find booking by confirmation number
+    let booking: TravelBooking | undefined;
+    let bookingId: string | undefined;
+
+    for (const [id, b] of this.bookings.entries()) {
+      if (
+        b.type === 'hotel' &&
+        (b.details as HotelReservation).confirmationNumber === data.confirmationNumber
+      ) {
+        booking = b;
+        bookingId = id;
+        break;
+      }
+    }
+
+    if (!booking || !bookingId) {
+      return { success: false, message: 'Reservation not found' };
+    }
+
+    const paymentStatus = this.paymentStatuses.get(bookingId);
+    if (!paymentStatus) {
+      return { success: false, message: 'Payment status not found' };
+    }
+
+    // Check if already paid
+    if (paymentStatus.status === 'paid') {
+      return { success: false, message: 'Payment already processed' };
+    }
+
+    // Verify payment amount
+    if (data.paidAmount < paymentStatus.totalAmount) {
+      return {
+        success: false,
+        message: `Insufficient payment. Required: ${paymentStatus.totalAmount}, Paid: ${data.paidAmount}`,
+      };
+    }
+
+    // Update payment status
+    paymentStatus.status = 'paid';
+    paymentStatus.paidAmount = data.paidAmount;
+    paymentStatus.remainingAmount = 0;
+    paymentStatus.paidAt = new Date();
+    paymentStatus.transactionId = data.transactionId;
+    paymentStatus.paymentMethod = data.paymentMethod;
+
+    // Update booking status
+    booking.status = 'completed';
+
+    const hotelReservation = booking.details as HotelReservation;
+
+    this.remember('data', {
+      booking,
+      payment: paymentStatus,
+      checkout: true,
+    }, ['hotel', 'payment', 'checkout'], 8);
+
+    return {
+      success: true,
+      message: '✅ Checkout complete! Payment received.',
+      confirmationNumber: hotelReservation.confirmationNumber,
+      hotelName: hotelReservation.hotelName,
+      paymentStatus: paymentStatus,
+      invoiceNeeded: true,
     };
   }
 
@@ -991,6 +1394,27 @@ export class TravelNode extends BaseNode {
       return result;
     });
 
+    // Flight payment confirmation handler
+    this.communication.onMessage('confirm-flight-payment', async (message) => {
+      this.remember('conversation', message, ['flight-payment'], 8);
+      const result = await this.confirmFlightPayment(message.payload);
+      return result;
+    });
+
+    // Flight check-in handler
+    this.communication.onMessage('check-in-flight', async (message) => {
+      this.remember('conversation', message, ['flight-checkin'], 7);
+      const result = await this.checkInFlight(message.payload);
+      return result;
+    });
+
+    // Hotel checkout handler
+    this.communication.onMessage('checkout-hotel', async (message) => {
+      this.remember('conversation', message, ['hotel-checkout'], 7);
+      const result = await this.checkoutHotel(message.payload);
+      return result;
+    });
+
     // Visa assistance handlers
     this.communication.onMessage('check-visa', async (message) => {
       const result = this.checkVisaRequirements(message.payload);
@@ -1102,5 +1526,39 @@ export class TravelNode extends BaseNode {
     };
 
     return basePrice[flightClass as keyof typeof basePrice] * passengers;
+  }
+
+  /**
+   * Calculate PNR expiry time in minutes
+   * Based on airline and class - realistic Turkish aviation industry practices
+   */
+  private calculatePNRExpiryTime(airline: string, flightClass: string): number {
+    // Low-cost carriers: Very short hold time
+    const lowCostCarriers = ['PC', 'XQ', 'VF']; // Pegasus, SunExpress, etc.
+    if (lowCostCarriers.includes(airline)) {
+      return 15; // 15 minutes only
+    }
+
+    // Turkish Airlines and major carriers
+    if (airline === 'TK') {
+      // Business/First class: Longer hold
+      if (flightClass === 'business' || flightClass === 'first') {
+        return 360; // 6 hours
+      }
+      // Economy: Standard hold
+      return 120; // 2 hours
+    }
+
+    // International premium carriers
+    const premiumCarriers = ['EK', 'QR', 'EY', 'LH', 'AF', 'BA'];
+    if (premiumCarriers.includes(airline)) {
+      if (flightClass === 'business' || flightClass === 'first') {
+        return 720; // 12 hours (rare, premium only)
+      }
+      return 180; // 3 hours
+    }
+
+    // Default: 30 minutes for others
+    return 30;
   }
 }
