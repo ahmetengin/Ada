@@ -198,8 +198,6 @@ export class TravelNode extends BaseNode {
         return this.bookFlight(data);
       case 'confirm-flight-payment':
         return this.confirmFlightPayment(data);
-      case 'check-in-flight':
-        return this.checkInFlight(data);
       case 'reserve-hotel':
         return this.reserveHotel(data);
       case 'checkout-hotel':
@@ -419,6 +417,9 @@ export class TravelNode extends BaseNode {
       ticketIssued: true,
     }, ['flight', 'payment', 'ticket'], 8);
 
+    // Generate check-in URL (airline's website)
+    const checkInUrl = this.generateCheckInUrl(flightBooking.airline, flightBooking.pnr);
+
     return {
       success: true,
       message: '✅ Payment confirmed! Ticket issued.',
@@ -429,155 +430,27 @@ export class TravelNode extends BaseNode {
       ticketNumber: `${flightBooking.airline}-${flightBooking.pnr}`,
       checkInOpensAt: checkInOpensAt,
       checkInAvailable: new Date() >= checkInOpensAt,
-      note: 'Online check-in opens 24 hours before departure. Boarding pass will be available after check-in.',
+      checkInUrl: checkInUrl,
+      note: '⚠️ Online check-in and boarding pass issuance is done on the airline website. We do not issue boarding passes.',
       paymentStatus: paymentStatus,
     };
   }
 
   /**
-   * Online check-in - Generates boarding pass via PassKit
-   * ⚠️ Only available 24 hours before flight departure
+   * Generate airline check-in URL
+   * Boarding pass issuance is airline's responsibility
    */
-  async checkInFlight(data: {
-    pnr: string;
-    passenger: {
-      name: string;
-      email?: string;
+  private generateCheckInUrl(airline: string, pnr: string): string {
+    const checkInUrls: Record<string, string> = {
+      'TK': `https://www.turkishairlines.com/en-int/online-check-in/?pnr=${pnr}`,
+      'PC': `https://www.flypgs.com/en/check-in?pnr=${pnr}`,
+      'XQ': `https://www.sunexpress.com/en/check-in/?pnr=${pnr}`,
+      'EK': `https://www.emirates.com/us/english/manage-booking/online-check-in/?pnr=${pnr}`,
+      'QR': `https://www.qatarairways.com/en/homepage/online-check-in.html?pnr=${pnr}`,
+      'LH': `https://www.lufthansa.com/de/en/online-check-in?pnr=${pnr}`,
     };
-    seatPreference?: string;
-  }): Promise<any> {
-    // Find booking by PNR
-    let booking: TravelBooking | undefined;
-    let bookingId: string | undefined;
 
-    for (const [id, b] of this.bookings.entries()) {
-      if (b.type === 'flight' && (b.details as FlightBooking).pnr === data.pnr) {
-        booking = b;
-        bookingId = id;
-        break;
-      }
-    }
-
-    if (!booking || !bookingId) {
-      return { success: false, message: 'Booking not found' };
-    }
-
-    // Check if ticket is issued (payment confirmed)
-    if (booking.status !== 'confirmed') {
-      return {
-        success: false,
-        message: 'Ticket not issued. Please complete payment first.',
-      };
-    }
-
-    const flightBooking = booking.details as FlightBooking;
-
-    // Check if check-in window is open (24 hours before departure)
-    const checkInOpensAt = new Date(flightBooking.departure.date);
-    checkInOpensAt.setHours(checkInOpensAt.getHours() - 24);
-
-    if (new Date() < checkInOpensAt) {
-      const hoursUntilCheckIn = Math.ceil(
-        (checkInOpensAt.getTime() - new Date().getTime()) / (1000 * 60 * 60)
-      );
-
-      return {
-        success: false,
-        message: `Check-in opens 24 hours before departure. Please try again in ${hoursUntilCheckIn} hours.`,
-        checkInOpensAt: checkInOpensAt,
-      };
-    }
-
-    // Assign seat (simulated)
-    const seat = data.seatPreference || this.assignRandomSeat(flightBooking.class);
-
-    // Generate boarding pass via PassKit
-    let boardingPassUrl: string | undefined;
-
-    try {
-      if (this.passkitNodes.length > 0) {
-        const passkitNode = BaseNode.findNodesByType('ada.passkit')[0];
-
-        if (passkitNode) {
-          const passResult = await passkitNode.request('create-pass', {
-            domain: 'ada.travel',
-            passType: 'BOARDING_PASS',
-            holder: {
-              name: data.passenger.name,
-              email: data.passenger.email,
-            },
-            validity: {
-              validFrom: flightBooking.departure.date,
-              validTo: flightBooking.arrival.date,
-            },
-            metadata: {
-              pnr: flightBooking.pnr,
-              flightNumber: flightBooking.flightNumber,
-              airline: flightBooking.airline,
-              departure: flightBooking.departure,
-              arrival: flightBooking.arrival,
-              class: flightBooking.class,
-              seat: seat,
-              bookingId: bookingId,
-              gate: `${Math.floor(Math.random() * 50) + 1}`, // Simulated
-              boardingTime: new Date(
-                new Date(flightBooking.departure.date).getTime() - 30 * 60 * 1000
-              ), // 30 min before departure
-            },
-            branding: {
-              primaryColor: '#E30A17', // Turkish Airlines red
-              secondaryColor: '#FFFFFF',
-              backgroundColor: 'rgb(227, 10, 23)',
-              textColor: 'rgb(255, 255, 255)',
-              organizationName: flightBooking.airline === 'TK' ? 'Turkish Airlines' : flightBooking.airline,
-            },
-          });
-
-          boardingPassUrl = passResult.applePassUrl;
-        }
-      }
-    } catch (error) {
-      console.error('Failed to generate boarding pass:', error);
-      return {
-        success: false,
-        message: 'Check-in successful but boarding pass generation failed. Please try again.',
-      };
-    }
-
-    this.remember('data', {
-      booking,
-      checkIn: true,
-      seat: seat,
-      boardingPass: boardingPassUrl,
-    }, ['flight', 'check-in', 'boarding-pass'], 8);
-
-    return {
-      success: true,
-      message: '✅ Check-in complete! Boarding pass issued.',
-      pnr: flightBooking.pnr,
-      flightNumber: flightBooking.flightNumber,
-      seat: seat,
-      boardingPassUrl: boardingPassUrl,
-      departure: flightBooking.departure,
-      arrival: flightBooking.arrival,
-      checkInCompleted: true,
-    };
-  }
-
-  /**
-   * Assign random seat based on class
-   */
-  private assignRandomSeat(flightClass: string): string {
-    if (flightClass === 'business' || flightClass === 'first') {
-      const row = Math.floor(Math.random() * 5) + 1; // Rows 1-5
-      const seat = ['A', 'D', 'F', 'K'][Math.floor(Math.random() * 4)];
-      return `${row}${seat}`;
-    }
-
-    // Economy
-    const row = Math.floor(Math.random() * 25) + 10; // Rows 10-34
-    const seat = ['A', 'B', 'C', 'D', 'E', 'F'][Math.floor(Math.random() * 6)];
-    return `${row}${seat}`;
+    return checkInUrls[airline] || `https://www.airline.com/check-in?pnr=${pnr}`;
   }
 
   /**
@@ -1398,13 +1271,6 @@ export class TravelNode extends BaseNode {
     this.communication.onMessage('confirm-flight-payment', async (message) => {
       this.remember('conversation', message, ['flight-payment'], 8);
       const result = await this.confirmFlightPayment(message.payload);
-      return result;
-    });
-
-    // Flight check-in handler
-    this.communication.onMessage('check-in-flight', async (message) => {
-      this.remember('conversation', message, ['flight-checkin'], 7);
-      const result = await this.checkInFlight(message.payload);
       return result;
     });
 

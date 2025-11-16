@@ -32,83 +32,103 @@ confirmPayment(transactionId, amount)
 
 ---
 
-### 2. **ada.travel** - ❌ CRITICAL VULNERABILITIES
+### 2. **ada.travel** - ✅ FIXED
 
-**Status**: NO PAYMENT VERIFICATION
-**Payment Policy**: PREPAID (should be)
+**Status**: Secure payment flow implemented
+**Payment Policy**: PREPAID (flights) + POSTPAID (hotels)
 
-#### 🔴 Critical Issues Found:
+✅ **Fixed Issues:**
 
-##### Flight Booking (Line 234-274)
+##### Flight Booking - NOW SECURE
 ```typescript
 async bookFlight(data) {
+  // Create PNR with time-limited hold
+  const expiryMinutes = calculatePNRExpiryTime(airline, class);
+  const expiresAt = new Date(Date.now() + expiryMinutes * 60000);
+
   const booking: TravelBooking = {
-    status: 'confirmed',  // ❌ WRONG! Confirmed without payment
+    status: 'pending-payment',  // ✅ CORRECT! Not confirmed
     // ...
+  };
+
+  const paymentStatus: PaymentStatus = {
+    status: 'pending',
+    expiresAt: expiresAt,
   };
 
   return {
     success: true,
-    pnr: flightBooking.pnr,  // ❌ PNR given without payment
-    flightNumber,            // ❌ Flight number given without payment
+    pnr: flightBooking.pnr,  // ✅ OK - Just reservation number
+    paymentLink,              // ✅ Payment required
+    expiresIn: `${expiryMinutes} minutes`,
+    message: 'Payment required. No ticket issued yet.',
   };
 }
-```
 
-**Problem:**
-- PNR created and returned immediately
-- No payment verification
-- Status set to 'confirmed' without payment
-- Boarding pass can be generated without payment
+async confirmFlightPayment(data) {
+  // Verify payment
+  // Check expiry
+  // Issue TICKET (not boarding pass yet)
 
-**Should Be:**
-```typescript
-bookFlight()
-  → Create PNR with short time limit (10 mins - 6 hours max)
-  → paymentStatus: 'pending'
-  → expiresAt: calculateTimeLimit(airline, class)
-  → Return PNR + payment link + countdown timer
+  booking.status = 'confirmed';  // ✅ Only after payment
 
-confirmFlightPayment()
-  → Verify payment BEFORE time limit expires
-  → Issue ticket
-  → Generate boarding pass
-
-// Auto-cancellation
-if (currentTime > expiresAt && paymentStatus !== 'paid') {
-  → Cancel PNR automatically
-  → Release seat inventory
+  return {
+    ticketIssued: true,
+    ticketNumber: `${airline}-${pnr}`,
+    checkInOpensAt: departureDate - 24h,
+    note: 'Boarding pass available after check-in',
+  };
 }
+
 ```
+
+**Current Flow (CORRECT):**
+1. `bookFlight()` → PNR + payment link (10 mins - 6 hours expiry)
+2. `confirmFlightPayment()` → Verify payment → Issue ticket + check-in URL
+3. User does check-in on **airline's website** (not our responsibility)
+   - Turkish Airlines: turkishairlines.com/online-check-in
+   - Pegasus: flypgs.com/check-in
+   - etc.
+4. Airline issues boarding pass (QR/barcode) directly
 
 **Important:**
+⚠️ **We DO NOT issue boarding passes** - this is the airline's responsibility
+✅ We only sell tickets and provide check-in links to airline websites
+
+**PNR Expiry Logic:**
 - Low-cost carriers: 10-30 minutes only
 - Turkish Airlines: 2-6 hours typical
-- International flights: Up to 24 hours (rare, premium only)
-- Price/availability can change → PNR gets auto-cancelled
-- NO "free 24h hold" - that's a myth!
+- International premium: Up to 12 hours
+- Auto-cancellation if unpaid
 
-##### Hotel Reservation (Line 279-326)
+##### Hotel Reservation - POSTPAID
 ```typescript
 async reserveHotel(data) {
+  const paymentPolicy: PaymentPolicy = 'postpaid';
+
   const booking: TravelBooking = {
-    status: 'confirmed',  // ❌ WRONG for prepaid model
+    status: 'confirmed',  // ✅ CORRECT for POSTPAID
     // ...
   };
+
+  const paymentStatus: PaymentStatus = {
+    status: 'pending',  // Payment at checkout
+  };
+
+  return {
+    message: 'Reservation confirmed. Payment at checkout.',
+  };
 }
-```
 
-**Problem:**
-- Reservation confirmed immediately
-- No payment policy defined
-- Should be POSTPAID (payment at checkout)
+async checkoutHotel(data) {
+  // Verify payment
+  booking.status = 'completed';
 
-**Should Be:**
-```typescript
-reserveHotel()
-  → status: 'confirmed' (OK for POSTPAID)
-  → Send confirmation
-  → Payment at checkout
+  return {
+    message: 'Checkout complete!',
+    invoiceNeeded: true,
+  };
+}
 ```
 
 ---
@@ -179,10 +199,12 @@ checkPaymentSchedule()
 | Node | PassKit Connected | Payment Flow | Status |
 |------|------------------|--------------|--------|
 | **ada.congress** | ✅ Yes | ✅ Secure | ✅ FIXED |
-| **ada.travel** | ❌ No | ❌ Missing | 🔴 CRITICAL |
+| **ada.travel** | N/A* | ✅ Secure | ✅ FIXED |
 | **ada.restaurant** | ❌ No | ⚠️ Partial | ⚠️ NEEDS WORK |
 | **ada.marina** | ❌ No | ❌ Missing | ⚠️ NEEDS WORK |
 | **ada.interpreter** | ⚠️ Data Only | N/A | ℹ️ REVIEW |
+
+*Boarding passes issued by airlines, not us
 
 ---
 
