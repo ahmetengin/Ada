@@ -32,6 +32,22 @@ export class MarinaNode extends BaseNode {
   private eInvoiceIntegration: EInvoiceIntegration;
   private facilityManagement: FacilityManagement;
 
+  // Payment tracking for long-term contracts
+  private paymentSchedules: Map<string, {
+    contractId: string;
+    totalAmount: number;
+    paidAmount: number;
+    schedule: Array<{
+      id: string;
+      description: string;
+      amount: number;
+      dueDate: Date;
+      status: 'pending' | 'paid' | 'overdue';
+      paidAt?: Date;
+      transactionId?: string;
+    }>;
+  }> = new Map();
+
   constructor(config: MarinaNodeConfig) {
     super({
       ...config,
@@ -153,6 +169,16 @@ export class MarinaNode extends BaseNode {
 
       case 'get-facility-stats':
         return this.facilityManagement.getStatistics();
+
+      // Payment schedule operations
+      case 'create-payment-schedule':
+        return this.createPaymentSchedule(data);
+
+      case 'confirm-scheduled-payment':
+        return this.confirmScheduledPayment(data);
+
+      case 'get-payment-schedule':
+        return this.getPaymentSchedule(data.contractId);
 
       default:
         throw new Error(`Unknown task type: ${type}`);
@@ -686,5 +712,213 @@ export class MarinaNode extends BaseNode {
    */
   getFacilityStatistics() {
     return this.facilityManagement.getStatistics();
+  }
+
+  // ========================================
+  // PAYMENT SCHEDULE MANAGEMENT
+  // ========================================
+
+  /**
+   * Create payment schedule for long-term contract (MIXED payment policy)
+   * Example: Yearly berth rental with 30% deposit + 12 monthly payments
+   */
+  async createPaymentSchedule(data: {
+    contractId: string;
+    totalAmount: number;
+    depositPercent?: number; // Default 30%
+    installments?: number; // Default 12 for yearly
+    startDate: Date;
+  }): Promise<any> {
+    const depositPercent = data.depositPercent || 0.3; // 30% default
+    const installments = data.installments || 12; // Monthly default
+
+    const depositAmount = Math.round(data.totalAmount * depositPercent);
+    const remainingAmount = data.totalAmount - depositAmount;
+    const installmentAmount = Math.round(remainingAmount / installments);
+
+    const schedule: Array<{
+      id: string;
+      description: string;
+      amount: number;
+      dueDate: Date;
+      status: 'pending' | 'paid' | 'overdue';
+      paidAt?: Date;
+      transactionId?: string;
+    }> = [];
+
+    // Deposit (immediate)
+    schedule.push({
+      id: `${data.contractId}-deposit`,
+      description: `Deposit (${Math.round(depositPercent * 100)}%)`,
+      amount: depositAmount,
+      dueDate: data.startDate,
+      status: 'pending',
+    });
+
+    // Monthly installments
+    for (let i = 1; i <= installments; i++) {
+      const dueDate = new Date(data.startDate);
+      dueDate.setMonth(dueDate.getMonth() + i);
+
+      schedule.push({
+        id: `${data.contractId}-installment-${i}`,
+        description: `Installment ${i}/${installments}`,
+        amount: i === installments
+          ? remainingAmount - (installmentAmount * (installments - 1)) // Last installment adjusts for rounding
+          : installmentAmount,
+        dueDate: dueDate,
+        status: 'pending',
+      });
+    }
+
+    this.paymentSchedules.set(data.contractId, {
+      contractId: data.contractId,
+      totalAmount: data.totalAmount,
+      paidAmount: 0,
+      schedule: schedule,
+    });
+
+    // Create payment link for deposit
+    const financeNodes = BaseNode.findNodesByType('ada.finance');
+    let depositPaymentLink = '';
+
+    if (financeNodes.length > 0) {
+      try {
+        const paymentResult = await this.requestFromNode(
+          financeNodes[0].getIdentity().id,
+          'create-payment-link',
+          {
+            bookingId: `${data.contractId}-deposit`,
+            amount: depositAmount,
+            currency: 'USD',
+            customerEmail: 'customer@example.com', // Should come from contract
+            customerName: 'Marina Customer',
+            description: `Marina Contract Deposit - ${data.contractId}`,
+          }
+        );
+        depositPaymentLink = paymentResult.paymentUrl;
+      } catch (error: any) {
+        console.error('Failed to create payment link:', error.message);
+      }
+    }
+
+    this.remember('data', {
+      contractId: data.contractId,
+      paymentSchedule: schedule,
+    }, ['payment', 'schedule'], 8);
+
+    return {
+      success: true,
+      contractId: data.contractId,
+      totalAmount: data.totalAmount,
+      depositAmount: depositAmount,
+      installmentAmount: installmentAmount,
+      installments: installments,
+      schedule: schedule,
+      depositPaymentLink: depositPaymentLink,
+      message: `💰 Payment schedule created: ${depositAmount} USD deposit + ${installments} x ${installmentAmount} USD`,
+    };
+  }
+
+  /**
+   * Confirm a scheduled payment
+   */
+  async confirmScheduledPayment(data: {
+    contractId: string;
+    paymentId: string;
+    transactionId: string;
+    paidAmount: number;
+  }): Promise<any> {
+    const paymentSchedule = this.paymentSchedules.get(data.contractId);
+
+    if (!paymentSchedule) {
+      return { success: false, message: 'Payment schedule not found' };
+    }
+
+    const payment = paymentSchedule.schedule.find(p => p.id === data.paymentId);
+
+    if (!payment) {
+      return { success: false, message: 'Payment not found in schedule' };
+    }
+
+    if (payment.status === 'paid') {
+      return { success: false, message: 'Payment already processed' };
+    }
+
+    // Verify amount
+    if (data.paidAmount < payment.amount) {
+      return {
+        success: false,
+        message: `Insufficient payment. Required: ${payment.amount}, Paid: ${data.paidAmount}`,
+      };
+    }
+
+    // Mark as paid
+    payment.status = 'paid';
+    payment.paidAt = new Date();
+    payment.transactionId = data.transactionId;
+
+    paymentSchedule.paidAmount += data.paidAmount;
+
+    // Check if all payments are complete
+    const allPaid = paymentSchedule.schedule.every(p => p.status === 'paid');
+    const remaining = paymentSchedule.schedule.filter(p => p.status === 'pending');
+
+    this.remember('data', {
+      contractId: data.contractId,
+      paymentConfirmed: payment,
+      allPaid: allPaid,
+    }, ['payment', 'confirmation'], 8);
+
+    return {
+      success: true,
+      message: allPaid
+        ? '✅ All payments complete! Contract fully paid.'
+        : `✅ Payment confirmed. ${remaining.length} payments remaining.`,
+      payment: payment,
+      totalPaid: paymentSchedule.paidAmount,
+      totalAmount: paymentSchedule.totalAmount,
+      remainingPayments: remaining.length,
+      nextPayment: remaining.length > 0 ? remaining[0] : null,
+      fullyPaid: allPaid,
+    };
+  }
+
+  /**
+   * Get payment schedule for a contract
+   */
+  getPaymentSchedule(contractId: string): any {
+    const paymentSchedule = this.paymentSchedules.get(contractId);
+
+    if (!paymentSchedule) {
+      return { success: false, message: 'Payment schedule not found' };
+    }
+
+    const overdue = paymentSchedule.schedule.filter(
+      p => p.status === 'pending' && new Date() > p.dueDate
+    );
+
+    const upcoming = paymentSchedule.schedule.filter(
+      p => p.status === 'pending' && new Date() <= p.dueDate
+    );
+
+    const paid = paymentSchedule.schedule.filter(p => p.status === 'paid');
+
+    return {
+      success: true,
+      contractId: contractId,
+      totalAmount: paymentSchedule.totalAmount,
+      paidAmount: paymentSchedule.paidAmount,
+      remainingAmount: paymentSchedule.totalAmount - paymentSchedule.paidAmount,
+      schedule: paymentSchedule.schedule,
+      summary: {
+        total: paymentSchedule.schedule.length,
+        paid: paid.length,
+        pending: upcoming.length,
+        overdue: overdue.length,
+      },
+      nextDue: upcoming.length > 0 ? upcoming[0] : null,
+      overdue: overdue,
+    };
   }
 }
